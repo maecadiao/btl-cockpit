@@ -1,0 +1,26 @@
+.secrets/
+.cache/
+.streamlit/secrets.toml
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.v1-backup
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
+
+# Personal config — users copy config.example.py to config.py and edit locally
+config.py
+
+# Internal dev docs
+DESIGN.md
+HANDOFF.md
+NOTES.md
+
+# Personal side-utilities (not used by the dashboard; hardcoded personal paths)
+yt.py
+hn.py
+_oauth_once.py
+assets/_recolor.py
