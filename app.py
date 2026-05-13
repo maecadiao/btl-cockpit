@@ -1834,6 +1834,13 @@ V2_CSS = r"""
     font-weight: 600;
     letter-spacing: -0.03em;
     line-height: 1;
+    /* Lock width to 3 digits + right-align so the counter ticking
+       100→10→9→3 doesn't reflow neighbouring elements at the tail
+       end of the animation. tabular-nums already inherited from
+       .v2-tb-pct ensures fixed-width glyphs. */
+    display: inline-block;
+    min-width: 1.85em;
+    text-align: right;
 }
 .v2-tb-pct-unit {
     font-size: 22px;
