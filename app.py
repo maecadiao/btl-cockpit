@@ -1618,139 +1618,239 @@ V2_CSS = r"""
     text-transform: lowercase;
 }
 
-/* ── TokenBurn marquee ────────────────────────────────────── */
+/* ── TokenBurn marquee (mirrors Obsidian cockpit) ───────────── */
 .v2-tb-wrap {
+    --tb-tone: 201, 100, 66;
+    --tb-fill-stop-mid: var(--cc-accent);
+    --tb-fill-stop-end: #ff8a5c;
     position: relative;
     background:
-        linear-gradient(180deg, var(--cc-accent-bg), rgba(201, 100, 66, 0.02) 60%),
+        linear-gradient(180deg, rgba(201, 100, 66, 0.10), rgba(201, 100, 66, 0.02) 60%, transparent 100%),
         var(--bg-card);
-    border: 1px solid var(--cc-ring);
+    border: 1px solid rgba(201, 100, 66, 0.28);
     border-radius: 3px;
-    padding: 14px 18px 14px 18px;
+    padding: 16px 22px 14px;
     margin: 6px 0 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
     overflow: hidden;
 }
-.v2-tb-wrap::before,
-.v2-tb-wrap::after,
-.v2-tb-wrap > .v2-hud-bl,
-.v2-tb-wrap > .v2-hud-br {
+.v2-tb-wrap::after {
     content: "";
     position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(201, 100, 66, 0.65) 30%, rgba(201, 100, 66, 0.65) 70%, transparent);
+}
+.v2-tb-wrap.warn { border-color: rgba(217, 165, 102, 0.4); --tb-fill-stop-mid: #e6963c; --tb-fill-stop-end: #ffb05c; }
+.v2-tb-wrap.critical {
+    border-color: rgba(240, 80, 50, 0.45);
+    --tb-fill-stop-mid: #f04f3a; --tb-fill-stop-end: #ff7a4a;
+    background:
+        linear-gradient(180deg, rgba(240, 80, 50, 0.12), rgba(240, 80, 50, 0.02) 60%, transparent 100%),
+        var(--bg-card);
+}
+.v2-tb-wrap.critical .v2-tb-pct-num { color: #f04f3a; text-shadow: 0 0 16px rgba(240, 80, 50, 0.5); animation: v2-tb-throb 1.2s ease-in-out infinite; }
+@keyframes v2-tb-throb { 0%,100%{opacity:1} 50%{opacity:0.7} }
+
+/* HUD corner brackets — 4 explicit spans */
+.v2-tb-corner {
+    position: absolute;
     width: 12px; height: 12px;
-    border: 1.5px solid var(--cc-accent);
-    opacity: 0.75;
+    border-color: var(--cc-accent);
+    border-style: solid;
+    border-width: 0;
+    opacity: 0.7;
+    pointer-events: none;
 }
-.v2-tb-wrap::before { top: 5px; left: 5px;   border-right: none; border-bottom: none; }
-.v2-tb-wrap::after  { top: 5px; right: 5px;  border-left: none;  border-bottom: none; }
-.v2-tb-wrap > .v2-hud-bl { bottom: 5px; left: 5px;  border-right: none; border-top: none; }
-.v2-tb-wrap > .v2-hud-br { bottom: 5px; right: 5px; border-left: none;  border-top: none; }
-.v2-tb-wrap.critical::before,
-.v2-tb-wrap.critical::after,
-.v2-tb-wrap.critical > .v2-hud-bl,
-.v2-tb-wrap.critical > .v2-hud-br {
-    animation: v2-hud-pulse 1.4s ease-in-out infinite;
-}
-@keyframes v2-hud-pulse {
-    0%,100% { opacity: 0.55; }
-    50%     { opacity: 1; }
-}
+.v2-tb-corner.tl { top: 5px; left: 5px;     border-top-width: 1.5px; border-left-width: 1.5px; }
+.v2-tb-corner.tr { top: 5px; right: 5px;    border-top-width: 1.5px; border-right-width: 1.5px; }
+.v2-tb-corner.bl { bottom: 5px; left: 5px;  border-bottom-width: 1.5px; border-left-width: 1.5px; }
+.v2-tb-corner.br { bottom: 5px; right: 5px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.v2-tb-wrap.critical .v2-tb-corner { border-color: #f04f3a; animation: v2-tb-corner-blink 1.2s ease-in-out infinite; }
+@keyframes v2-tb-corner-blink { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
 .v2-tb-head {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    align-items: baseline;
+    gap: 16px;
+}
+.v2-tb-title {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
-    letter-spacing: 0.18em;
+    letter-spacing: 0.24em;
     text-transform: uppercase;
-    color: var(--cc-fg-2);
-    margin-bottom: 2px;
-}
-.v2-tb-head .v2-live {
     color: var(--cc-accent);
+    font-weight: 600;
+}
+.v2-tb-live {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-}
-.v2-tb-head .v2-live::before {
-    content: "●";
-    color: var(--cc-accent);
-    animation: v2-blink 1.6s infinite;
-}
-@keyframes v2-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-.v2-tb-pct {
+    gap: 6px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 56px;
-    line-height: 1;
-    font-weight: 600;
-    color: var(--cc-fg-0);
-    margin: 4px 0 6px 0;
-    letter-spacing: -0.02em;
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--cc-accent);
 }
-.v2-tb-pct em { font-style: normal; color: var(--cc-accent); font-size: 24px; vertical-align: super; margin-left: 2px; }
+.v2-tb-live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cc-accent);
+    box-shadow: 0 0 6px rgba(201, 100, 66, 0.8);
+    animation: v2-tb-pulse 1.6s ease-in-out infinite;
+}
+@keyframes v2-tb-pulse {
+    0%,100% { opacity: 0.35; transform: scale(0.85); }
+    50%     { opacity: 1;    transform: scale(1.15); }
+}
+.v2-tb-meta {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--cc-fg-2);
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* meter row: pct | bar | counts */
+.v2-tb-meter {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 22px;
+    align-items: center;
+}
+.v2-tb-pct {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    color: var(--cc-accent);
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 14px rgba(201, 100, 66, 0.35);
+    font-family: 'JetBrains Mono', monospace;
+}
+.v2-tb-pct-num {
+    font-size: 64px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1;
+}
+.v2-tb-pct-unit {
+    font-size: 22px;
+    color: rgba(201, 100, 66, 0.7);
+    font-weight: 500;
+}
+.v2-tb-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
 .v2-tb-track {
     position: relative;
-    height: 14px;
+    height: 38px;
+    border-radius: 2px;
+    overflow: visible;
+    isolation: isolate;
     background:
         repeating-linear-gradient(
-            45deg,
-            rgba(176, 174, 165, 0.05) 0,
-            rgba(176, 174, 165, 0.05) 4px,
-            rgba(0,0,0,0) 4px,
-            rgba(0,0,0,0) 8px
+            135deg,
+            rgba(250, 249, 245, 0.025) 0 6px,
+            transparent 6px 12px
         ),
-        rgba(20, 21, 22, 0.6);
-    border: 1px solid var(--cc-ring);
+        linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.18)),
+        var(--bg);
+    border: 1px solid rgba(250, 249, 245, 0.06);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+    margin-top: 0;
+}
+.v2-tb-track::after {
+    content: "";
+    position: absolute;
+    inset: 4px 0;
     border-radius: 2px;
-    overflow: hidden;
-    margin-top: 4px;
+    background: repeating-linear-gradient(
+        90deg,
+        transparent 0 calc(5% - 1px),
+        rgba(250, 249, 245, 0.12) calc(5% - 1px) 5%
+    );
+    pointer-events: none;
+    z-index: 1;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 25%, black 75%, transparent 100%);
+            mask-image: linear-gradient(180deg, transparent 0%, black 25%, black 75%, transparent 100%);
 }
 .v2-tb-fill {
     position: absolute;
     left: 0; top: 0; bottom: 0;
-    background: linear-gradient(90deg, var(--accent) 0%, #e8825c 100%);
-    transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    border-radius: 2px 0 0 2px;
+    background:
+        linear-gradient(180deg, rgba(255, 211, 181, 0.20) 0%, transparent 35%),
+        linear-gradient(90deg, rgba(var(--tb-tone), 0.55) 0%, var(--tb-fill-stop-mid) 80%, var(--tb-fill-stop-end) 100%);
+    box-shadow:
+        inset 0 0 12px rgba(255, 138, 92, 0.35),
+        0 0 18px rgba(var(--tb-tone), 0.35);
+    transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    z-index: 2;
 }
-.v2-tb-fill.warn { background: linear-gradient(90deg, #d97757 0%, var(--warn) 100%); }
-.v2-tb-fill.danger { background: linear-gradient(90deg, var(--warn) 0%, var(--danger) 100%); }
 .v2-tb-proj {
     position: absolute;
     top: 0; bottom: 0;
     background: repeating-linear-gradient(
-        45deg,
-        rgba(201,100,66,0.22) 0,
-        rgba(201,100,66,0.22) 4px,
-        rgba(0,0,0,0) 4px,
-        rgba(0,0,0,0) 8px
+        135deg,
+        rgba(201, 100, 66, 0.18) 0 6px,
+        transparent 6px 12px
     );
+    border-top: 1px solid rgba(201, 100, 66, 0.22);
+    border-bottom: 1px solid rgba(201, 100, 66, 0.22);
+    pointer-events: none;
+    transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1), left 600ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .v2-tb-scan {
     position: absolute;
     top: 0; bottom: 0;
-    width: 30px;
-    background: linear-gradient(90deg,
-        rgba(255, 211, 181, 0) 0%,
-        rgba(255, 211, 181, 0.45) 50%,
-        rgba(255, 211, 181, 0) 100%);
+    width: 50%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.06) 40%,
+        rgba(255, 255, 255, 0.12) 50%,
+        rgba(255, 255, 255, 0.06) 60%,
+        transparent 100%
+    );
     animation: v2-scan 4s linear infinite;
     pointer-events: none;
+    z-index: 3;
 }
 @keyframes v2-scan {
-    0%   { left: -30px; }
-    100% { left: 100%; }
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(220%); }
 }
 .v2-tb-comet {
     position: absolute;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 16px; height: 16px;
-    background: radial-gradient(circle, #ffd3b5 0%, rgba(255,211,181,0) 70%);
-    mix-blend-mode: screen;
-    animation: v2-breath 1.6s ease-in-out infinite;
+    top: 0; bottom: 0;
+    width: 80px;
+    max-width: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 211, 181, 0.05) 30%,
+        rgba(255, 211, 181, 0.16) 60%,
+        rgba(255, 240, 220, 0.35) 90%,
+        rgba(255, 245, 230, 0.55) 100%
+    );
     pointer-events: none;
+    mix-blend-mode: screen;
+    z-index: 2;
 }
-@keyframes v2-breath {
-    0%,100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
-    50%     { opacity: 1.0; transform: translate(-50%, -50%) scale(1.4); }
+.v2-tb-endpoint {
+    position: absolute;
+    top: -6px; bottom: -6px;
+    width: 2px;
+    margin-left: -1px;
+    background: linear-gradient(180deg, transparent, var(--cc-accent) 20%, var(--cc-accent) 80%, transparent);
+    pointer-events: none;
+    z-index: 4;
 }
 .v2-tb-ticks {
     display: flex;
@@ -1761,16 +1861,17 @@ V2_CSS = r"""
     margin-top: 4px;
     letter-spacing: 0.08em;
 }
-.v2-tb-footer {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 8px;
+.v2-tb-counts {
+    text-align: right;
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     color: var(--cc-fg-1);
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
-.v2-tb-footer .v2-tb-counts em { font-style: normal; color: var(--cc-fg-0); }
-.v2-tb-footer .v2-tb-proj-label { color: var(--cc-accent); }
+.v2-tb-counts .v2-tb-used { color: var(--cc-fg-0); font-size: 14px; font-weight: 500; }
+.v2-tb-counts .v2-tb-proj-label { color: var(--cc-accent); font-size: 10px; letter-spacing: 0.06em; }
 
 /* ── YtWeekReview card ────────────────────────────────────── */
 .v2-ytr-card {
@@ -3133,7 +3234,7 @@ def render_tokenburn_meter(used: int, budget: int, reset_at: float | None, last_
         except Exception:
             pass
 
-    tone = "danger" if pct >= 90 else ("warn" if pct >= 70 else "")
+    tone_class = "critical" if pct >= 90 else ("warn" if pct >= 70 else "")
 
     pull_age_html = "—"
     pull_dt = _parse_iso(last_pull_ts or "")
@@ -3158,28 +3259,42 @@ def render_tokenburn_meter(used: int, budget: int, reset_at: float | None, last_
     for frac in (0, 0.25, 0.5, 0.75, 1.0):
         ticks.append(fmt_tokens(int(budget * frac)) if budget else "—")
 
-    wrap_class = "v2-tb-wrap critical" if pct >= 90 else "v2-tb-wrap"
+    wrap_class = f"v2-tb-wrap {tone_class}".strip()
     return (
         f'<div class="{wrap_class}">'
-        '<span class="v2-hud-bl"></span><span class="v2-hud-br"></span>'
+        # HUD corner brackets (4 explicit spans, animate on .critical)
+        '<span class="v2-tb-corner tl"></span>'
+        '<span class="v2-tb-corner tr"></span>'
+        '<span class="v2-tb-corner bl"></span>'
+        '<span class="v2-tb-corner br"></span>'
+        # Header
         '<div class="v2-tb-head">'
-        '<span>§ TOKEN BURN · 5H WINDOW</span>'
-        '<span class="v2-live">LIVE</span>'
-        f'<span style="margin-left:auto;color:var(--fg-mute)">{pull_age_html}</span>'
+        '<span class="v2-tb-title">§ TOKEN BURN · 5H WINDOW</span>'
+        '<span class="v2-tb-live"><span class="v2-tb-live-dot"></span>LIVE</span>'
+        f'<span class="v2-tb-meta">{pull_age_html}</span>'
         '</div>'
-        f'<div class="v2-tb-pct">{pct_int}<em>%</em></div>'
+        # Meter grid: pct | bar | counts
+        '<div class="v2-tb-meter">'
+        '<div class="v2-tb-pct">'
+        f'<span class="v2-tb-pct-num">{pct_int}</span>'
+        '<span class="v2-tb-pct-unit">%</span>'
+        '</div>'
+        '<div class="v2-tb-bar-wrap">'
         '<div class="v2-tb-track">'
-        f'<div class="v2-tb-fill {tone}" style="width:{pct:.1f}%"></div>'
+        f'<div class="v2-tb-fill" style="width:{pct:.1f}%"></div>'
         f'<div class="v2-tb-proj" style="left:{proj_left:.1f}%;width:{proj_width:.1f}%"></div>'
-        f'<div class="v2-tb-comet" style="left:{pct:.1f}%"></div>'
+        f'<div class="v2-tb-comet" style="left:max(0px, calc({pct:.1f}% - 80px));width:min(80px, {pct:.1f}%)"></div>'
+        f'<div class="v2-tb-endpoint" style="left:{pct:.1f}%"></div>'
         '<div class="v2-tb-scan"></div>'
         '</div>'
         '<div class="v2-tb-ticks">'
         + "".join(f"<span>{t}</span>" for t in ticks) +
         '</div>'
-        '<div class="v2-tb-footer">'
-        f'<span class="v2-tb-counts"><em>{used_h}</em> / {budget_h}</span>'
-        f'<span class="v2-tb-proj-label">→ {projected_h} projected</span>'
+        '</div>'
+        '<div class="v2-tb-counts">'
+        f'<div><span class="v2-tb-used">{used_h}</span> / {budget_h}</div>'
+        f'<div class="v2-tb-proj-label">→ {projected_h} projected</div>'
+        '</div>'
         '</div>'
         '</div>'
     )
@@ -3803,16 +3918,6 @@ else:
     research_tab = nullcontext()
 
 with overview_tab:
-
-    # ── 30-day cumulative activity chart ──────────────────────
-    st.markdown(
-        '<div class="chart-card parchment">'
-        '<div class="chart-title">agentic OS · cumulative activity · 30d '
-        f'<span>· {_cum_total:,} total · {_cum_30d} last 30d</span></div>'
-        + _build_activity_svg(df_cum)
-        + '</div>',
-        unsafe_allow_html=True,
-    )
 
     # ── Schedule + Daily Drivers (2-col, read-only) ───────────
     _show_sched = _enabled_cards.get("schedule", True)
