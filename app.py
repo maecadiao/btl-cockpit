@@ -3345,6 +3345,199 @@ def render_yt_review_card(review: dict | None, tab_key: str = "audience") -> Non
         st.toast(f"queued · {uid[:8]}", icon="✓")
 
 
+# ── MorningBrief parser + renderer (commit 8) ──────────────
+
+MORNING_DIR = VAULT_PATH / "inbox" / "reports" / "morning"
+
+
+def _extract_section(body: str, heading_pattern: str) -> str:
+    m = re.search(rf"##\s+{heading_pattern}\s*\n(.*?)(?=\n##\s|\Z)", body, re.DOTALL)
+    return m.group(1) if m else ""
+
+
+def _bullets(section: str, limit: int = 3) -> list[str]:
+    out = []
+    for line in section.splitlines():
+        s = line.strip()
+        if s.startswith("- "):
+            # strip leading bold marker if present
+            text = s[2:].lstrip()
+            out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _bullet_count(section: str) -> int:
+    return sum(1 for line in section.splitlines() if line.strip().startswith("- "))
+
+
+def _table_rows(section: str) -> int:
+    count = 0
+    for line in section.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not cells or set(cells[0]) <= {"-", ":"} or cells[0].lower() in ("video", "creator", "title"):
+            continue
+        count += 1
+    return count
+
+
+def parse_morning_brief(path: Path | None = None) -> dict | None:
+    if path is None:
+        path = _latest_in_dir(MORNING_DIR)
+    if not path or not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8", errors="replace")
+    fm_match = _FRONTMATTER_RE.match(text)
+    body = text[fm_match.end():] if fm_match else text
+
+    headlines_s = _extract_section(body, r"Headlines")
+    yt_s = _extract_section(body, r"YouTube[^\n]*Trending[^\n]*")
+    web_s = _extract_section(body, r"Web[^\n]*News[^\n]*")
+    x_s = _extract_section(body, r"X[^\n]*Twitter[^\n]*")
+    gh_s = _extract_section(body, r"GitHub[^\n]*Builder[^\n]*")
+    opps_s = _extract_section(body, r"Content Opportunities")
+
+    # X "voices" count — bullets nested under "Top voices:"
+    voices = 0
+    m_voices = re.search(r"\*\*Top voices:\*\*\s*\n((?:\s+-\s+.+\n?)+)", body)
+    if m_voices:
+        voices = sum(1 for l in m_voices.group(1).splitlines() if l.strip().startswith("- "))
+
+    return {
+        "path": str(path),
+        "name": path.name,
+        "headlines":   _bullets(headlines_s, 3),
+        "headlines_n": _bullet_count(headlines_s),
+        "yt_rows":     _table_rows(yt_s),
+        "yt_top":      [],  # could parse table later
+        "x_voices_n":  voices,
+        "web_n":       _bullet_count(web_s),
+        "gh_n":        _bullet_count(gh_s),
+        "opps":        _bullets(opps_s, 3),
+        "opps_n":      _bullet_count(opps_s),
+    }
+
+
+def render_morning_brief(brief: dict | None) -> None:
+    if not brief:
+        st.markdown(
+            '<div class="v2-mb-grid">'
+            '<div class="v2-mb-tile"><div class="v2-mb-label">MORNING BRIEF</div>'
+            '<div style="color:var(--fg-mute);font-size:0.78rem">No brief on file. Run the /morning skill.</div>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    # Coverage chip row
+    cov = (
+        '<div class="v2-mb-coverage">'
+        f'<span>{brief["headlines_n"]} HEADLINES</span>'
+        f'<span>{brief["web_n"]} ARTICLES</span>'
+        f'<span>{brief["x_voices_n"]} X VOICES</span>'
+        f'<span>{brief["gh_n"]} REPOS</span>'
+        f'<span>{brief["opps_n"]} OPPS</span>'
+        '</div>'
+    )
+    st.markdown(cov, unsafe_allow_html=True)
+
+    def _tile(label: str, items: list[str]) -> str:
+        if not items:
+            body = '<div style="color:var(--fg-mute);font-size:0.74rem">no data</div>'
+        else:
+            body = "<ul>" + "".join(f"<li>{html_escape(i[:180])}</li>" for i in items) + "</ul>"
+        return f'<div class="v2-mb-tile"><div class="v2-mb-label">{label}</div>{body}</div>'
+
+    grid = (
+        '<div class="v2-mb-grid">'
+        + _tile("HEADLINES", brief.get("headlines") or [])
+        + _tile("YT · TRENDING", [f"{brief['yt_rows']} videos tracked"] if brief.get("yt_rows") else [])
+        + _tile("X · CONVERSATION", [f"{brief['x_voices_n']} top voices"] if brief.get("x_voices_n") else [])
+        + _tile("CONTENT OPPS", brief.get("opps") or [])
+        + '</div>'
+    )
+    st.markdown(grid, unsafe_allow_html=True)
+
+    brief_path = Path(brief["path"])
+    if brief_path.exists():
+        uri = obsidian_uri(brief_path)
+        st.markdown(
+            f'<div style="text-align:right;font-size:0.65rem;margin-top:0.3rem">'
+            f'<a href="{uri}" target="_blank" style="color:var(--accent);text-decoration:none;letter-spacing:0.1em">FULL ↗</a>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
+# ── Daily note → Schedule + Daily Drivers (commit 8) ───────
+
+def parse_daily_note(date_iso: str | None = None) -> dict:
+    """Read today's (or given date's) daily note. Returns dict with schedule + drivers."""
+    if date_iso is None:
+        date_iso = date.today().isoformat()
+    note = DAILY_NOTES_DIR / f"{date_iso}.md"
+    out = {"path": str(note), "schedule": [], "drivers": []}
+    if not note.exists():
+        return out
+    text = note.read_text(encoding="utf-8", errors="replace")
+    sched_s = _extract_section(text, r"Schedule")
+    for line in sched_s.splitlines():
+        s = line.strip()
+        if not s.startswith("- "):
+            continue
+        # Format: "- HH:MM — label"
+        m = re.match(r"-\s+(\d{1,2}:\d{2})\s*[—\-–]\s*(.+)", s)
+        if m:
+            out["schedule"].append({"time": m.group(1), "label": m.group(2).strip()})
+    drv_s = _extract_section(text, r"Daily Drivers")
+    for line in drv_s.splitlines():
+        s = line.strip()
+        m = re.match(r"-\s+\[([ xX])\]\s+(.+)", s)
+        if m:
+            out["drivers"].append({"done": m.group(1).lower() == "x", "label": m.group(2).strip()})
+    return out
+
+
+def render_schedule_panel(events: list[dict]) -> str:
+    if not events:
+        body = '<div style="color:var(--fg-mute);font-size:0.78rem">no schedule today</div>'
+    else:
+        rows = "".join(
+            f'<div class="v2-sched-row"><span class="v2-sched-time">{html_escape(e["time"])}</span>'
+            f'<span class="v2-sched-label">{html_escape(e["label"])}</span></div>'
+            for e in events
+        )
+        body = rows
+    return (
+        '<div class="v2-panel">'
+        '<div class="v2-panel-head">§ SCHEDULE · TODAY</div>'
+        f'{body}</div>'
+    )
+
+
+def render_daily_drivers_panel(drivers: list[dict]) -> str:
+    if not drivers:
+        body = '<div style="color:var(--fg-mute);font-size:0.78rem">no drivers seeded today</div>'
+    else:
+        rows = "".join(
+            f'<div class="v2-driver-row{" done" if d["done"] else ""}">'
+            f'<span class="v2-driver-box">{"✓" if d["done"] else ""}</span>'
+            f'<span class="v2-driver-label">{html_escape(d["label"])}</span></div>'
+            for d in drivers
+        )
+        body = rows
+    return (
+        '<div class="v2-panel">'
+        '<div class="v2-panel-head">§ DAILY DRIVERS</div>'
+        f'{body}'
+        '<div style="color:var(--fg-mute);font-size:0.6rem;margin-top:0.4rem;letter-spacing:0.1em">'
+        'READ-ONLY · TOGGLE IN OBSIDIAN'
+        '</div></div>'
+    )
+
+
 five_h_reset = (rate_limits.get("five_hour") or {}).get("resets_at")
 week_reset = (rate_limits.get("weekly") or {}).get("resets_at")
 
@@ -3600,6 +3793,20 @@ with overview_tab:
             ),
             unsafe_allow_html=True,
         )
+
+    # ── Schedule + Daily Drivers (2-col, read-only) ───────────
+    _show_sched = _enabled_cards.get("schedule", True)
+    _show_drv = _enabled_cards.get("daily_drivers", True)
+    if _show_sched or _show_drv:
+        _daily = parse_daily_note()
+        _sd_cols = st.columns(2, gap="small")
+        with _sd_cols[0]:
+            if _show_sched:
+                st.markdown(render_schedule_panel(_daily["schedule"]), unsafe_allow_html=True)
+        with _sd_cols[1]:
+            if _show_drv:
+                st.markdown(render_daily_drivers_panel(_daily["drivers"]), unsafe_allow_html=True)
+        st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
     col_main, col_side = st.columns([2.6, 1], gap="large")
 
@@ -4110,11 +4317,6 @@ with audience_tab:
 with research_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="v2-panel"><div class="v2-panel-head">research marquee · coming in commit 8</div>'
-            '<div style="color:var(--fg-mute);font-size:0.78rem">'
-            'MorningBrief 2x2 grid lands here — Headlines / YT Trending / X Conversation / '
-            'Content Opportunities, with coverage chip strip.'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
+        if _enabled_cards.get("morning_brief", True):
+            _brief = parse_morning_brief()
+            render_morning_brief(_brief)
