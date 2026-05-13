@@ -2284,6 +2284,28 @@ V2_CSS = r"""
     text-decoration: line-through;
 }
 
+/* TokenBurn refresh-pull button — compact terracotta pill */
+.v2-tb-refresh-slot { margin-top: -8px; }
+.v2-tb-refresh-slot + div [data-testid="stButton"] > button,
+.v2-tb-refresh-slot ~ div [data-testid="stButton"] > button {
+    background: rgba(219, 116, 70, 0.12) !important;
+    color: var(--cc-accent) !important;
+    border: 1px solid rgba(219, 116, 70, 0.35) !important;
+    border-radius: 99px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 10px !important;
+    letter-spacing: 0.14em !important;
+    text-transform: uppercase !important;
+    padding: 4px 10px !important;
+    box-shadow: none !important;
+}
+.v2-tb-refresh-slot + div [data-testid="stButton"] > button:hover,
+.v2-tb-refresh-slot ~ div [data-testid="stButton"] > button:hover {
+    background: rgba(219, 116, 70, 0.22) !important;
+    border-color: rgba(219, 116, 70, 0.55) !important;
+    box-shadow: 0 0 12px -4px rgba(219, 116, 70, 0.5) !important;
+}
+
 /* ── Demo-mode pill ───────────────────────────────────────── */
 .v2-demo-pill {
     display: inline-block;
@@ -3742,13 +3764,23 @@ def _extract_section(body: str, heading_pattern: str) -> str:
     return m.group(1) if m else ""
 
 
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^\)]+\)")
+_MD_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
+
+
+def _clean_md(text: str) -> str:
+    """Strip markdown bold + link syntax from a bullet so it renders as plain text."""
+    text = _MD_LINK_RE.sub(r"\1", text)
+    text = _MD_BOLD_RE.sub(r"\1", text)
+    return text.strip()
+
+
 def _bullets(section: str, limit: int = 3) -> list[str]:
     out = []
     for line in section.splitlines():
         s = line.strip()
         if s.startswith("- "):
-            # strip leading bold marker if present
-            text = s[2:].lstrip()
+            text = _clean_md(s[2:].lstrip())
             out.append(text)
         if len(out) >= limit:
             break
@@ -3771,6 +3803,44 @@ def _table_rows(section: str) -> int:
     return count
 
 
+def _parse_yt_table(section: str, limit: int = 3) -> list[dict]:
+    """Parse the YouTube trending markdown table. Returns list of {title, creator, views}."""
+    out: list[dict] = []
+    for line in section.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not cells or set(cells[0]) <= {"-", ":"}:
+            continue
+        if cells[0].lower() in ("video", "title", "creator"):
+            continue
+        if len(cells) < 3:
+            continue
+        out.append({
+            "title":   _clean_md(cells[0]),
+            "creator": _clean_md(cells[1]) if len(cells) > 1 else "",
+            "views":   cells[2] if len(cells) > 2 else "",
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _parse_x_voices(body: str, limit: int = 3) -> list[str]:
+    """Extract bullets nested under **Top voices:** in the morning brief X section."""
+    m = re.search(r"\*\*Top voices:\*\*\s*\n((?:\s+-\s+.+\n?)+)", body)
+    if not m:
+        return []
+    out: list[str] = []
+    for l in m.group(1).splitlines():
+        s = l.strip()
+        if s.startswith("- "):
+            out.append(_clean_md(s[2:].lstrip()))
+        if len(out) >= limit:
+            break
+    return out
+
+
 def parse_morning_brief(path: Path | None = None) -> dict | None:
     if path is None:
         path = _latest_in_dir(MORNING_DIR)
@@ -3787,20 +3857,22 @@ def parse_morning_brief(path: Path | None = None) -> dict | None:
     gh_s = _extract_section(body, r"GitHub[^\n]*Builder[^\n]*")
     opps_s = _extract_section(body, r"Content Opportunities")
 
-    # X "voices" count — bullets nested under "Top voices:"
-    voices = 0
+    # X voices nested bullets under "**Top voices:**"
+    voice_bullets = _parse_x_voices(body, limit=3)
+    voices_n = 0
     m_voices = re.search(r"\*\*Top voices:\*\*\s*\n((?:\s+-\s+.+\n?)+)", body)
     if m_voices:
-        voices = sum(1 for l in m_voices.group(1).splitlines() if l.strip().startswith("- "))
+        voices_n = sum(1 for l in m_voices.group(1).splitlines() if l.strip().startswith("- "))
 
     return {
         "path": str(path),
         "name": path.name,
         "headlines":   _bullets(headlines_s, 3),
         "headlines_n": _bullet_count(headlines_s),
+        "yt_top":      _parse_yt_table(yt_s, limit=3),
         "yt_rows":     _table_rows(yt_s),
-        "yt_top":      [],  # could parse table later
-        "x_voices_n":  voices,
+        "x_voices":    voice_bullets,
+        "x_voices_n":  voices_n,
         "web_n":       _bullet_count(web_s),
         "gh_n":        _bullet_count(gh_s),
         "opps":        _bullets(opps_s, 3),
@@ -3837,12 +3909,28 @@ def render_morning_brief(brief: dict | None) -> None:
             body = "<ul>" + "".join(f"<li>{html_escape(i[:180])}</li>" for i in items) + "</ul>"
         return f'<div class="v2-mb-tile"><div class="v2-mb-label">{label}</div>{body}</div>'
 
+    # YT trending tile — render top videos with creator + view count
+    yt_items = [
+        f'{html_escape(v["title"])} <span style="color:var(--cc-fg-2)">· {html_escape(v["creator"])} · {html_escape(v["views"])}</span>'
+        for v in (brief.get("yt_top") or [])
+    ]
+    x_items = [html_escape(s) for s in (brief.get("x_voices") or [])]
+    headlines_items = [html_escape(s) for s in (brief.get("headlines") or [])]
+    opps_items = [html_escape(s) for s in (brief.get("opps") or [])]
+
+    def _tile_html(label: str, items: list[str]) -> str:
+        if not items:
+            body = '<div style="color:var(--cc-fg-2);font-size:0.74rem">no data</div>'
+        else:
+            body = "<ul>" + "".join(f"<li>{i[:240]}</li>" for i in items) + "</ul>"
+        return f'<div class="v2-mb-tile"><div class="v2-mb-label">{label}</div>{body}</div>'
+
     grid = (
         '<div class="v2-mb-grid">'
-        + _tile("HEADLINES", brief.get("headlines") or [])
-        + _tile("YT · TRENDING", [f"{brief['yt_rows']} videos tracked"] if brief.get("yt_rows") else [])
-        + _tile("X · CONVERSATION", [f"{brief['x_voices_n']} top voices"] if brief.get("x_voices_n") else [])
-        + _tile("CONTENT OPPS", brief.get("opps") or [])
+        + _tile_html("HEADLINES",        headlines_items)
+        + _tile_html("YT · TRENDING",    yt_items)
+        + _tile_html("X · CONVERSATION", x_items)
+        + _tile_html("CONTENT OPPS",     opps_items)
         + '</div>'
     )
     st.markdown(grid, unsafe_allow_html=True)
@@ -4023,6 +4111,19 @@ if _enabled_cards.get("tokenburn", True):
         ),
         unsafe_allow_html=True,
     )
+    # Refresh row — fires /metrics-pull through the runner so usage + audience
+    # numbers refresh without re-running the skill manually.
+    _refresh_cols = st.columns([5, 1])
+    with _refresh_cols[1]:
+        st.markdown('<div class="v2-tb-refresh-slot"></div>', unsafe_allow_html=True)
+        if st.button(
+            "↻ pull latest",
+            key="tb_refresh",
+            help="Queue /metrics-pull skill — refreshes 5h usage, audience counts, latest video",
+            use_container_width=True,
+        ):
+            uid, _ = write_queue_intent("metrics-pull")
+            st.toast(f"queued metrics-pull · {uid[:8]}", icon="✓")
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
