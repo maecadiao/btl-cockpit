@@ -1417,6 +1417,45 @@ BOOT_ANIMATION_CSS = """
 .mcp-strip {
     animation: boot-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.95s both;
 }
+
+/* ── TokenBurn boot sequence ─────────────────────────────── */
+@keyframes v2-tb-wrap-boot {
+    0%   { opacity: 0; transform: translateY(14px) scale(0.985); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes v2-tb-corner-boot {
+    0%   { opacity: 0; transform: scale(0.3); }
+    100% { opacity: 0.7; transform: scale(1); }
+}
+@keyframes v2-tb-fill-boot {
+    0%   { clip-path: inset(0 100% 0 0); }
+    100% { clip-path: inset(0 0 0 0); }
+}
+@keyframes v2-tb-pct-boot {
+    0%   { opacity: 0; transform: scale(0.72); filter: blur(8px); }
+    60%  { opacity: 1; filter: blur(0); }
+    100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+@keyframes v2-tb-header-boot {
+    0%   { opacity: 0; transform: translateY(-6px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes v2-tb-counts-boot {
+    0%, 40% { opacity: 0; transform: translateX(8px); }
+    100%    { opacity: 1; transform: translateX(0); }
+}
+@keyframes v2-tb-endpoint-boot {
+    0%, 70% { opacity: 0; }
+    100%    { opacity: 1; }
+}
+.v2-tb-wrap    { animation: v2-tb-wrap-boot   0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
+.v2-tb-corner  { animation: v2-tb-corner-boot 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both; }
+.v2-tb-head    { animation: v2-tb-header-boot 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both; }
+.v2-tb-fill    { animation: v2-tb-fill-boot   1.10s cubic-bezier(0.4, 0, 0.2, 1) 0.45s both; }
+.v2-tb-pct     { animation: v2-tb-pct-boot    0.7s  cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s both; }
+.v2-tb-endpoint, .v2-tb-comet, .v2-tb-proj { animation: v2-tb-endpoint-boot 1.6s ease-out 0s both; }
+.v2-tb-counts  { animation: v2-tb-counts-boot 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0s both; }
+.v2-tb-ticks   { animation: v2-tb-counts-boot 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0s both; }
 </style>
 """
 
@@ -1471,6 +1510,28 @@ V2_CSS = r"""
 [data-testid="stHorizontalBlock"] > [data-testid="column"] {
     padding-left: 6px !important;
     padding-right: 6px !important;
+}
+
+/* Subtle terracotta crosshatch on page bg — adds depth without competing with content */
+.stApp {
+    background:
+        repeating-linear-gradient(
+            45deg,
+            rgba(219, 116, 70, 0.020) 0,
+            rgba(219, 116, 70, 0.020) 1px,
+            transparent 1px,
+            transparent 8px
+        ),
+        repeating-linear-gradient(
+            -45deg,
+            rgba(219, 116, 70, 0.013) 0,
+            rgba(219, 116, 70, 0.013) 1px,
+            transparent 1px,
+            transparent 8px
+        ),
+        radial-gradient(ellipse at top, rgba(201, 100, 66, 0.035) 0%, transparent 60%),
+        var(--bg) !important;
+    background-attachment: fixed !important;
 }
 
 /* ── Latest Upload card ───────────────────────────────────── */
