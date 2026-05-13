@@ -4086,7 +4086,7 @@ with overview_tab:
                 st.markdown(
                     '<div class="v2-panel v2-thru-panel">'
                     '<div class="v2-panel-head">'
-                    '<span>§ AUTOMATIONS · 30D</span>'
+                    '<span>§ AGENT RUNS · 30D</span>'
                     f'<span class="v2-thru-meta">{_cum_total:,} total · {_cum_30d} last 30d</span>'
                     '</div>'
                     f'<div class="v2-thru-svg">{_build_activity_svg(df_cum)}</div>'
