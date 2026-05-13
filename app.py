@@ -1431,6 +1431,489 @@ st.markdown(
 )
 st.markdown(PREMIUM_CSS, unsafe_allow_html=True)
 
+# ───────────────────────────────────────────────────────────────
+# V2 cockpit-port CSS — Latest Upload, audience cards, TokenBurn,
+# YtWeekReview, MorningBrief, Schedule + Daily Drivers.
+# Injected after PREMIUM_CSS so it cascades on top of legacy rules.
+# ───────────────────────────────────────────────────────────────
+V2_CSS = r"""
+<style>
+:root {
+    --card-tone-youtube:    rgba(255, 51, 51, 0.10);
+    --card-tone-youtube-bd: rgba(255, 51, 51, 0.32);
+    --card-tone-instagram:    rgba(225, 48, 108, 0.10);
+    --card-tone-instagram-bd: rgba(225, 48, 108, 0.32);
+    --card-tone-tiktok:    rgba(0, 240, 255, 0.08);
+    --card-tone-tiktok-bd: rgba(0, 240, 255, 0.30);
+    --card-tone-claude:    rgba(201, 100, 66, 0.10);
+    --card-tone-claude-bd: rgba(201, 100, 66, 0.36);
+}
+
+/* ── Latest Upload card ───────────────────────────────────── */
+.v2-latest {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--ring-soft);
+    border-radius: 4px;
+    padding: 0.95rem 1.1rem 0.9rem 1.4rem;
+    margin: 0.5rem 0 1rem 0;
+    overflow: hidden;
+}
+.v2-latest::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--accent) 0%, rgba(201,100,66,0.18) 100%);
+}
+.v2-latest::after {
+    content: "▶";
+    position: absolute;
+    right: 1.0rem;
+    bottom: 0.45rem;
+    font-size: 3.2rem;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.06;
+    pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+}
+.v2-latest-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    margin-bottom: 0.35rem;
+}
+.v2-latest-head .v2-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 6px var(--good);
+}
+.v2-latest-head .v2-dot.mock { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+.v2-latest-head .v2-dot.err  { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+.v2-latest-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.05rem;
+    color: var(--fg);
+    line-height: 1.25;
+    margin: 0.05rem 0 0.4rem 0;
+    font-weight: 500;
+    max-width: 78%;
+}
+.v2-latest-title a { color: inherit; text-decoration: none; border-bottom: 1px dotted transparent; }
+.v2-latest-title a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+.v2-latest-stats {
+    display: flex;
+    gap: 1.4rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--fg-dim);
+}
+.v2-latest-stats .v2-stat-val { color: var(--fg); font-weight: 500; }
+.v2-latest-stats .v2-stat-lbl { color: var(--fg-mute); margin-left: 0.3rem; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* ── Audience metric cards ───────────────────────────────── */
+.v2-audience-card {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--ring-soft);
+    border-radius: 4px;
+    padding: 0.85rem 1rem 0.85rem 1rem;
+    overflow: hidden;
+    min-height: 92px;
+}
+.v2-audience-card[data-tone="youtube"]   { background: linear-gradient(135deg, var(--card-tone-youtube) 0%, var(--bg-card) 70%); border-color: var(--card-tone-youtube-bd); }
+.v2-audience-card[data-tone="instagram"] { background: linear-gradient(135deg, var(--card-tone-instagram) 0%, var(--bg-card) 70%); border-color: var(--card-tone-instagram-bd); }
+.v2-audience-card[data-tone="tiktok"]    { background: linear-gradient(135deg, var(--card-tone-tiktok) 0%, var(--bg-card) 70%); border-color: var(--card-tone-tiktok-bd); }
+.v2-audience-card[data-tone="claude"]    { background: linear-gradient(135deg, var(--card-tone-claude) 0%, var(--bg-card) 70%); border-color: var(--card-tone-claude-bd); }
+.v2-audience-watermark {
+    position: absolute;
+    right: -8px;
+    bottom: -18px;
+    font-size: 3.6rem;
+    line-height: 1;
+    opacity: 0.08;
+    pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+}
+.v2-audience-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    margin-bottom: 0.4rem;
+}
+.v2-audience-head .v2-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 5px var(--good);
+}
+.v2-audience-head .v2-dot.mock { background: var(--warn); box-shadow: 0 0 5px var(--warn); }
+.v2-audience-head .v2-dot.err  { background: var(--danger); box-shadow: 0 0 5px var(--danger); }
+.v2-audience-head .v2-dot.stale { background: var(--fg-mute); box-shadow: none; }
+.v2-audience-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.7rem;
+    line-height: 1;
+    color: var(--fg);
+    font-weight: 600;
+    margin: 0.2rem 0 0.3rem 0;
+}
+.v2-audience-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--fg-mute);
+    letter-spacing: 0.02em;
+}
+
+/* ── TokenBurn marquee (commit 6) ─────────────────────────── */
+.v2-tb-wrap {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--ring-soft);
+    border-radius: 4px;
+    padding: 1.1rem 1.3rem 1.2rem 1.3rem;
+    margin: 0.5rem 0 1rem 0;
+    overflow: hidden;
+}
+.v2-tb-wrap::before,
+.v2-tb-wrap::after,
+.v2-tb-wrap > .v2-hud-bl,
+.v2-tb-wrap > .v2-hud-br {
+    content: "";
+    position: absolute;
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--accent);
+    opacity: 0.7;
+}
+.v2-tb-wrap::before { top: 6px; left: 6px;   border-right: none; border-bottom: none; }
+.v2-tb-wrap::after  { top: 6px; right: 6px;  border-left: none;  border-bottom: none; }
+.v2-tb-wrap > .v2-hud-bl { bottom: 6px; left: 6px;  border-right: none; border-top: none; }
+.v2-tb-wrap > .v2-hud-br { bottom: 6px; right: 6px; border-left: none;  border-top: none; }
+.v2-tb-head {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    margin-bottom: 0.2rem;
+}
+.v2-tb-head .v2-live {
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+.v2-tb-head .v2-live::before {
+    content: "●";
+    color: var(--accent);
+    animation: v2-blink 1.6s infinite;
+}
+@keyframes v2-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.v2-tb-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 3.6rem;
+    line-height: 1;
+    font-weight: 600;
+    color: var(--fg);
+    margin: 0.3rem 0 0.4rem 0;
+    letter-spacing: -0.02em;
+}
+.v2-tb-pct em { font-style: normal; color: var(--accent); font-size: 1.6rem; vertical-align: super; margin-left: 0.15rem; }
+.v2-tb-track {
+    position: relative;
+    height: 18px;
+    background:
+        repeating-linear-gradient(
+            45deg,
+            rgba(176, 174, 165, 0.05) 0,
+            rgba(176, 174, 165, 0.05) 4px,
+            rgba(0,0,0,0) 4px,
+            rgba(0,0,0,0) 8px
+        ),
+        rgba(20, 21, 22, 0.6);
+    border: 1px solid var(--ring-soft);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0.3rem;
+}
+.v2-tb-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, var(--accent) 0%, #e8825c 100%);
+    transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.v2-tb-fill.warn { background: linear-gradient(90deg, #d97757 0%, var(--warn) 100%); }
+.v2-tb-fill.danger { background: linear-gradient(90deg, var(--warn) 0%, var(--danger) 100%); }
+.v2-tb-proj {
+    position: absolute;
+    top: 0; bottom: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(201,100,66,0.22) 0,
+        rgba(201,100,66,0.22) 4px,
+        rgba(0,0,0,0) 4px,
+        rgba(0,0,0,0) 8px
+    );
+}
+.v2-tb-scan {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 30px;
+    background: linear-gradient(90deg,
+        rgba(255, 211, 181, 0) 0%,
+        rgba(255, 211, 181, 0.45) 50%,
+        rgba(255, 211, 181, 0) 100%);
+    animation: v2-scan 4s linear infinite;
+    pointer-events: none;
+}
+@keyframes v2-scan {
+    0%   { left: -30px; }
+    100% { left: 100%; }
+}
+.v2-tb-comet {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px; height: 16px;
+    background: radial-gradient(circle, #ffd3b5 0%, rgba(255,211,181,0) 70%);
+    mix-blend-mode: screen;
+    animation: v2-breath 1.6s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes v2-breath {
+    0%,100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+    50%     { opacity: 1.0; transform: translate(-50%, -50%) scale(1.4); }
+}
+.v2-tb-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--fg-mute);
+    margin-top: 0.3rem;
+    letter-spacing: 0.05em;
+}
+.v2-tb-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--fg-dim);
+}
+.v2-tb-footer .v2-tb-counts em { font-style: normal; color: var(--fg); }
+.v2-tb-footer .v2-tb-proj-label { color: var(--accent); }
+
+/* ── YtWeekReview card (commit 7) ─────────────────────────── */
+.v2-ytr-card {
+    background: var(--bg-card);
+    border: 1px solid var(--ring-soft);
+    border-radius: 4px;
+    padding: 1rem 1.2rem;
+    margin: 0.5rem 0 1rem 0;
+}
+.v2-ytr-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+.v2-ytr-head .v2-ytr-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+}
+.v2-ytr-head .v2-ytr-actions {
+    display: flex;
+    gap: 0.6rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+}
+.v2-ytr-head .v2-ytr-actions a {
+    color: var(--accent);
+    text-decoration: none;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.v2-ytr-head .v2-ytr-actions a:hover { text-decoration: underline; }
+.v2-ytr-tldr {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--fg-dim);
+    line-height: 1.45;
+    margin: 0.3rem 0 0.6rem 0;
+    padding-left: 1rem;
+}
+.v2-ytr-tldr li { margin: 0.15rem 0; }
+.v2-chip-row {
+    display: flex; gap: 0.4rem;
+    margin: 0.4rem 0;
+    flex-wrap: wrap;
+}
+.v2-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.22rem 0.55rem;
+    border: 1px solid var(--ring-soft);
+    border-radius: 99px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    background: var(--bg-elev);
+}
+.v2-chip.hit       { color: var(--good); border-color: rgba(143,185,122,0.4); }
+.v2-chip.steady    { color: var(--fg-dim); }
+.v2-chip.climbing  { color: var(--warn); border-color: rgba(217,165,102,0.4); }
+.v2-chip.miss      { color: var(--accent); border-color: rgba(201,100,66,0.4); }
+.v2-ytr-perfs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+}
+.v2-perf-card {
+    border: 1px solid var(--ring-soft);
+    border-radius: 4px;
+    padding: 0.55rem 0.7rem;
+    background: var(--bg-elev);
+}
+.v2-perf-card.top { border-left: 3px solid var(--good); }
+.v2-perf-card.under { border-left: 3px solid var(--accent); }
+.v2-perf-card .v2-perf-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+}
+.v2-perf-card .v2-perf-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--fg);
+    margin: 0.15rem 0;
+    line-height: 1.3;
+}
+
+/* ── MorningBrief 2x2 grid (commit 8) ─────────────────────── */
+.v2-mb-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem;
+    margin: 0.5rem 0 0.8rem 0;
+}
+.v2-mb-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--ring-soft);
+    border-radius: 4px;
+    padding: 0.7rem 0.9rem;
+    min-height: 130px;
+}
+.v2-mb-tile .v2-mb-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    margin-bottom: 0.4rem;
+}
+.v2-mb-tile ul {
+    margin: 0;
+    padding-left: 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.74rem;
+    color: var(--fg);
+    line-height: 1.45;
+}
+.v2-mb-tile li { margin: 0.15rem 0; }
+.v2-mb-coverage {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--fg-mute);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+.v2-mb-coverage span { padding: 0.15rem 0.5rem; border: 1px solid var(--ring-soft); border-radius: 99px; }
+
+/* ── Schedule + Daily Drivers ─────────────────────────────── */
+.v2-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--ring-soft);
+    border-radius: 4px;
+    padding: 0.8rem 1rem;
+}
+.v2-panel-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.v2-sched-row {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.32rem 0;
+    border-bottom: 1px dashed var(--ring-soft);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+}
+.v2-sched-row:last-child { border-bottom: none; }
+.v2-sched-row .v2-sched-time { color: var(--accent); font-weight: 500; }
+.v2-sched-row .v2-sched-label { color: var(--fg); }
+.v2-driver-row {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.32rem 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--fg);
+}
+.v2-driver-row .v2-driver-box {
+    width: 14px; height: 14px;
+    border: 1px solid var(--ring-mid);
+    border-radius: 2px;
+    display: inline-block;
+    text-align: center;
+    line-height: 12px;
+    font-size: 0.7rem;
+    color: var(--accent);
+}
+.v2-driver-row.done .v2-driver-box { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.v2-driver-row.done .v2-driver-label { color: var(--fg-mute); text-decoration: line-through; }
+</style>
+"""
+st.markdown(V2_CSS, unsafe_allow_html=True)
+
 # Boot animations only on fresh page mount — not on every Streamlit rerun (button clicks).
 # Session state persists per tab; fresh Ctrl+R creates a new session → animation replays.
 if not st.session_state.get("_boot_animated"):
@@ -2336,6 +2819,81 @@ def render_gauge(
     )
 
 
+# ═══════════════════════════════════════════════════════════
+# V2 CARD READERS + RENDERERS — Latest Upload, audience, etc.
+# ═══════════════════════════════════════════════════════════
+
+LATEST_VIDEO_JSON = VAULT_PATH / "system" / "metrics" / "latest-video.json"
+
+
+def _parse_iso(ts: str) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def read_latest_video() -> dict | None:
+    """Read system/metrics/latest-video.json. Fallback to DEMO_LATEST_VIDEO when DEMO_MODE or missing."""
+    demo_on = getattr(_cfg, "DEMO_MODE", False)
+    demo = getattr(_cfg, "DEMO_LATEST_VIDEO", None)
+    if demo_on and demo:
+        return dict(demo)
+    try:
+        if LATEST_VIDEO_JSON.exists():
+            return json.loads(LATEST_VIDEO_JSON.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        pass
+    return dict(demo) if demo else None
+
+
+def render_latest_upload(video: dict | None) -> str:
+    if not video:
+        return ""
+    status = (video.get("status") or "ok").lower()
+    title = video.get("title") or "(untitled)"
+    url = video.get("url") or "#"
+    views = int(video.get("views") or 0)
+    likes = int(video.get("likes") or 0)
+    comments = int(video.get("comments") or 0)
+    pub_dt = _parse_iso(video.get("published_at") or "")
+    ts_dt = _parse_iso(video.get("ts") or "")
+    age_html = ""
+    if pub_dt:
+        try:
+            age_sec = int((datetime.now(pub_dt.tzinfo) - pub_dt).total_seconds())
+            age_html = f"· uploaded {fmt_ago(max(0, age_sec))} ago"
+        except Exception:
+            pass
+    pull_html = ""
+    if ts_dt:
+        try:
+            pull_age = int((datetime.now(ts_dt.tzinfo) - ts_dt).total_seconds())
+            pull_html = f"· pulled {fmt_ago(max(0, pull_age))} ago"
+        except Exception:
+            pass
+
+    dot_class = "mock" if status == "mock" else ("err" if status not in ("ok", "mock") else "")
+    safe_title = html_escape(title)
+    return (
+        '<div class="v2-latest">'
+        '<div class="v2-latest-head">'
+        f'<span class="v2-dot {dot_class}"></span>'
+        f'<span>latest upload · youtube</span>'
+        f'<span style="margin-left:auto;color:var(--fg-mute)">{age_html} {pull_html}</span>'
+        '</div>'
+        f'<div class="v2-latest-title"><a href="{url}" target="_blank">{safe_title}</a></div>'
+        '<div class="v2-latest-stats">'
+        f'<span><span class="v2-stat-val">{fmt_tokens(views)}</span><span class="v2-stat-lbl">views</span></span>'
+        f'<span><span class="v2-stat-val">{fmt_tokens(likes)}</span><span class="v2-stat-lbl">likes</span></span>'
+        f'<span><span class="v2-stat-val">{fmt_tokens(comments)}</span><span class="v2-stat-lbl">comments</span></span>'
+        '</div>'
+        '</div>'
+    )
+
+
 five_h_reset = (rate_limits.get("five_hour") or {}).get("resets_at")
 week_reset = (rate_limits.get("weekly") or {}).get("resets_at")
 
@@ -2409,6 +2967,18 @@ with m3:
     )
 
 st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════
+# LATEST UPLOAD CARD (v2)
+# ═══════════════════════════════════════════════════════════
+
+_enabled_cards = getattr(_cfg, "ENABLED_CARDS", {}) or {}
+if _enabled_cards.get("latest_upload", True):
+    _latest = read_latest_video()
+    _latest_html = render_latest_upload(_latest)
+    if _latest_html:
+        st.markdown(_latest_html, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
