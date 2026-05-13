@@ -1510,36 +1510,36 @@ V2_CSS = r"""
 /* Terracotta atmosphere — visible crosshatch + grid + radial halos */
 .stApp {
     background:
-        /* primary 45° crosshatch — clearly visible technical grid */
+        /* primary 45° crosshatch */
         repeating-linear-gradient(
             45deg,
-            rgba(219, 116, 70, 0.11) 0,
-            rgba(219, 116, 70, 0.11) 1px,
+            rgba(219, 116, 70, 0.070) 0,
+            rgba(219, 116, 70, 0.070) 1px,
             transparent 1px,
             transparent 16px
         ),
         /* counter-hatch at -45° */
         repeating-linear-gradient(
             -45deg,
-            rgba(219, 116, 70, 0.075) 0,
-            rgba(219, 116, 70, 0.075) 1px,
+            rgba(219, 116, 70, 0.045) 0,
+            rgba(219, 116, 70, 0.045) 1px,
             transparent 1px,
             transparent 16px
         ),
         /* horizontal scanlines */
         repeating-linear-gradient(
             0deg,
-            rgba(255, 138, 92, 0.028) 0,
-            rgba(255, 138, 92, 0.028) 1px,
+            rgba(255, 138, 92, 0.018) 0,
+            rgba(255, 138, 92, 0.018) 1px,
             transparent 1px,
             transparent 4px
         ),
         /* top halo behind header */
-        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(219, 116, 70, 0.18) 0%, transparent 65%),
+        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(219, 116, 70, 0.13) 0%, transparent 65%),
         /* bottom-left ambient warmth */
-        radial-gradient(circle at 0% 100%, rgba(201, 100, 66, 0.14) 0%, transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(201, 100, 66, 0.10) 0%, transparent 50%),
         /* bottom-right ambient warmth */
-        radial-gradient(circle at 100% 100%, rgba(219, 116, 70, 0.12) 0%, transparent 50%),
+        radial-gradient(circle at 100% 100%, rgba(219, 116, 70, 0.09) 0%, transparent 50%),
         var(--bg) !important;
     background-attachment: fixed !important;
 }
