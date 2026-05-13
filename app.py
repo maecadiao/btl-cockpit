@@ -3566,71 +3566,29 @@ _5h_delta = compute_delta(_5h_cur, _5h_pri)
 _wk_delta = compute_delta(_wk_cur, _wk_pri)
 _rt_delta = compute_delta(_rt_today, _rt_yday)
 
-m1, m2, m3 = st.columns(3, gap="small")
-with m1:
-    st.markdown(
-        render_gauge(
-            "5-hour window",
-            f"resets · {fmt_time_until(five_h_reset)}",
-            five_h_tokens,
-            LIMITS["five_hour_tokens"],
-            fmt_tokens(five_h_tokens),
-            fmt_tokens(LIMITS["five_hour_tokens"]),
-            f"· {usage['five_hour']['sessions']} sessions",
-            delta=_5h_delta,
-        ),
-        unsafe_allow_html=True,
-    )
-with m2:
-    st.markdown(
-        render_gauge(
-            "weekly window",
-            f"resets · {fmt_time_until(week_reset)}",
-            week_tokens,
-            LIMITS["weekly_tokens"],
-            fmt_tokens(week_tokens),
-            fmt_tokens(LIMITS["weekly_tokens"]),
-            f"· {usage['weekly']['sessions']} sessions",
-            delta=_wk_delta,
-        ),
-        unsafe_allow_html=True,
-    )
-with m3:
-    st.markdown(
-        render_gauge(
-            f"routines · {CLAUDE_PLAN}",
-            "resets · midnight",
-            routines_today,
-            LIMITS["daily_routine_runs"],
-            str(routines_today),
-            str(LIMITS["daily_routine_runs"]),
-            f"{fmt_cost(today_cost)} today",
-            delta=_rt_delta,
-        ),
-        unsafe_allow_html=True,
-    )
-
-st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════
-# LATEST UPLOAD CARD (v2)
-# ═══════════════════════════════════════════════════════════
-
 _enabled_cards = getattr(_cfg, "ENABLED_CARDS", {}) or {}
-if _enabled_cards.get("latest_upload", True):
-    _latest = read_latest_video()
-    _latest_html = render_latest_upload(_latest)
-    if _latest_html:
-        st.markdown(_latest_html, unsafe_allow_html=True)
 
-if _enabled_cards.get("audience_row", True):
-    render_audience_row()
-    st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+# ═══════════════════════════════════════════════════════════
+# TOKENBURN — single 5h meter replaces the legacy 3-meter row
+# (5h / weekly / routines). Mirrors the Obsidian cockpit pattern.
+# ═══════════════════════════════════════════════════════════
+
+if _enabled_cards.get("tokenburn", True):
+    st.markdown(
+        render_tokenburn_meter(
+            used=five_h_tokens,
+            budget=LIMITS["five_hour_tokens"],
+            reset_at=five_h_reset,
+            last_pull_ts=read_last_pull_ts(),
+        ),
+        unsafe_allow_html=True,
+    )
+
+st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
-# RUNS-PER-DAY CHART
+# RUNS-PER-DAY CHART  (rendered inside Overview tab below)
 # ═══════════════════════════════════════════════════════════
 
 import plotly.graph_objects as go
@@ -3733,14 +3691,7 @@ def _build_activity_svg(df: pd.DataFrame) -> str:
     return svg
 
 
-st.markdown(
-    '<div class="chart-card parchment">'
-    '<div class="chart-title">agentic OS · cumulative activity · 30d '
-    f'<span>· {_cum_total:,} total · {_cum_30d} last 30d</span></div>'
-    + _build_activity_svg(df_cum)
-    + '</div>',
-    unsafe_allow_html=True,
-)
+# 30-day cumulative chart rendered inside Overview tab (see LAYOUT block below).
 
 
 # ═══════════════════════════════════════════════════════════
@@ -3782,17 +3733,15 @@ else:
 
 with overview_tab:
 
-    # ── TokenBurn marquee (5h window) ─────────────────────────
-    if _enabled_cards.get("tokenburn", True):
-        st.markdown(
-            render_tokenburn_meter(
-                used=five_h_tokens,
-                budget=LIMITS["five_hour_tokens"],
-                reset_at=five_h_reset,
-                last_pull_ts=read_last_pull_ts(),
-            ),
-            unsafe_allow_html=True,
-        )
+    # ── 30-day cumulative activity chart ──────────────────────
+    st.markdown(
+        '<div class="chart-card parchment">'
+        '<div class="chart-title">agentic OS · cumulative activity · 30d '
+        f'<span>· {_cum_total:,} total · {_cum_30d} last 30d</span></div>'
+        + _build_activity_svg(df_cum)
+        + '</div>',
+        unsafe_allow_html=True,
+    )
 
     # ── Schedule + Daily Drivers (2-col, read-only) ───────────
     _show_sched = _enabled_cards.get("schedule", True)
