@@ -3259,486 +3259,526 @@ if mcp_servers:
 
 st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 
-col_main, col_side = st.columns([2.6, 1], gap="large")
+_layout_v = getattr(_cfg, "LAYOUT_VERSION", "v1")
+if _layout_v == "v2":
+    overview_tab, audience_tab, research_tab = st.tabs([
+        "overview", "audience", "research",
+    ])
+else:
+    # v1 fallback — no tabs, single column. Defined as null context for indented block below.
+    from contextlib import nullcontext
+    overview_tab = nullcontext()
+    audience_tab = nullcontext()
+    research_tab = nullcontext()
+
+with overview_tab:
+
+    col_main, col_side = st.columns([2.6, 1], gap="large")
 
 
-# ——— SIDEBAR COLUMN: recent runs ———
-with col_side:
-    runs = list_recent_runs(8)
-    card_html = '<div class="runs-card"><div class="cat-label">recent runs</div>'
-    if not runs:
-        card_html += '<div style="color: var(--text-mute); font-size: 0.8rem; padding: 0.4rem 0 0.5rem 0;">no runs yet</div>'
-    else:
-        card_html += '<div class="run-list">'
-        for r in runs:
-            mtime = datetime.fromtimestamp(r.stat().st_mtime)
-            label = r.stem.split("-", 2)[-1].replace("-", " ")
-            uri = obsidian_uri(r)
-            card_html += (
-                f'<div class="run-row">'
-                f'<span class="run-time">{mtime.strftime("%H:%M")}</span>'
-                f'<span class="run-label">{html_escape(label)}</span>'
-                f'<a href="{uri}" target="_blank">open ↗</a>'
-                f'</div>'
-            )
+    # ——— SIDEBAR COLUMN: recent runs ———
+    with col_side:
+        runs = list_recent_runs(8)
+        card_html = '<div class="runs-card"><div class="cat-label">recent runs</div>'
+        if not runs:
+            card_html += '<div style="color: var(--text-mute); font-size: 0.8rem; padding: 0.4rem 0 0.5rem 0;">no runs yet</div>'
+        else:
+            card_html += '<div class="run-list">'
+            for r in runs:
+                mtime = datetime.fromtimestamp(r.stat().st_mtime)
+                label = r.stem.split("-", 2)[-1].replace("-", " ")
+                uri = obsidian_uri(r)
+                card_html += (
+                    f'<div class="run-row">'
+                    f'<span class="run-time">{mtime.strftime("%H:%M")}</span>'
+                    f'<span class="run-label">{html_escape(label)}</span>'
+                    f'<a href="{uri}" target="_blank">open ↗</a>'
+                    f'</div>'
+                )
+            card_html += '</div>'
         card_html += '</div>'
-    card_html += '</div>'
-    st.markdown(card_html, unsafe_allow_html=True)
+        st.markdown(card_html, unsafe_allow_html=True)
 
-    # Mini 7-day runs bar chart (bottom-right "dead space" filler)
-    df_7 = activity_cumulative(7)
-    _bar_labels = df_7["date"].dt.strftime("%a").tolist()
-    _bar_vals = df_7["day_count"].tolist()
-    _bar_total = int(sum(_bar_vals))
+        # Mini 7-day runs bar chart (bottom-right "dead space" filler)
+        df_7 = activity_cumulative(7)
+        _bar_labels = df_7["date"].dt.strftime("%a").tolist()
+        _bar_vals = df_7["day_count"].tolist()
+        _bar_total = int(sum(_bar_vals))
 
-    st.markdown(
-        '<div class="chart-card mini-chart">'
-        '<div class="chart-title">last <em>seven</em> days '
-        f'<span>· {_bar_total} runs</span></div>',
-        unsafe_allow_html=True,
-    )
-    _barfig = go.Figure()
-    _barfig.add_trace(
-        go.Bar(
-            x=_bar_labels,
-            y=_bar_vals,
-            marker=dict(color="#c96442", line=dict(width=0)),
-            hovertemplate="<b>%{x}</b><br>%{y} runs<extra></extra>",
+        st.markdown(
+            '<div class="chart-card mini-chart">'
+            '<div class="chart-title">last <em>seven</em> days '
+            f'<span>· {_bar_total} runs</span></div>',
+            unsafe_allow_html=True,
         )
-    )
-    _barfig.update_layout(
-        height=120,
-        margin=dict(l=20, r=20, t=10, b=28),
-        paper_bgcolor="#1c1b19",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="JetBrains Mono, monospace", size=9, color="#b0aea5"),
-        showlegend=False,
-        bargap=0.32,
-        hoverlabel=dict(
-            bgcolor="#0e0f10",
-            bordercolor="#c96442",
-            font=dict(family="JetBrains Mono, monospace", color="#faf9f5", size=10),
-        ),
-        xaxis=dict(
-            showgrid=False, zeroline=False, showline=False,
-            tickfont=dict(color="#b0aea5", size=9),
-        ),
-        yaxis=dict(
-            showgrid=False, zeroline=False, showline=False, showticklabels=False,
-        ),
-    )
-    st.plotly_chart(_barfig, use_container_width=True, config={"displayModeBar": False})
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # ——— Forecast card (5-hour burn projection) ———
-    _cap = LIMITS["five_hour_tokens"]
-    _used = five_h_tokens
-    _remaining = max(0, _cap - _used)
-    _reset_in_sec = max(0, int(five_h_reset - time.time())) if five_h_reset else 0
-    _reset_in_min = _reset_in_sec // 60
-    _window_min = 300  # 5h
-    _elapsed_min = max(1, _window_min - _reset_in_min) if _reset_in_min else 1
-    _burn_per_min = (_used / _elapsed_min) if _elapsed_min > 0 else 0
-    _exhaust_in_min = int(_remaining / _burn_per_min) if _burn_per_min > 0 else None
-    _will_exhaust = _exhaust_in_min is not None and _exhaust_in_min < _reset_in_min
-
-    _elapsed_pct = min(100, _elapsed_min / _window_min * 100)
-    if _will_exhaust and _exhaust_in_min is not None:
-        _proj_end_min = _elapsed_min + _exhaust_in_min
-    else:
-        _proj_end_min = _window_min
-    _proj_pct = max(_elapsed_pct, min(100, _proj_end_min / _window_min * 100))
-    _proj_left = _elapsed_pct
-    _proj_width = max(0, _proj_pct - _elapsed_pct)
-    _now_pct = _elapsed_pct
-
-    if _will_exhaust and _exhaust_in_min is not None:
-        _hit = (datetime.now() + timedelta(minutes=_exhaust_in_min)).strftime("%H:%M")
-        _headline = f'cap at <em>{_hit}</em>'
-    else:
-        _headline = 'under cap <em>this window</em>'
-    _sub = (
-        f'burn · {fmt_tokens(int(_burn_per_min))}/min'
-        if _burn_per_min > 0 else 'burn · idle'
-    )
-
-    # Next scheduled routines — hardcoded schedule until real cron wired in
-    _scheduled = [
-        ("17:00", "evening digest"),
-        ("22:00", "vault compact"),
-        ("09:00", "morning brief"),
-    ]
-    _now_dt = datetime.now()
-    _sched_rows = []
-    for hhmm, label in _scheduled:
-        _h, _m = [int(x) for x in hhmm.split(":")]
-        _next = _now_dt.replace(hour=_h, minute=_m, second=0, microsecond=0)
-        if _next <= _now_dt:
-            _next = _next + timedelta(days=1)
-        _sched_rows.append((_next, hhmm, label))
-    _sched_rows.sort(key=lambda r: r[0])
-    _sched_html = '<div class="cpt-sched">'
-    for dt, hhmm, label in _sched_rows[:2]:
-        _sched_html += (
-            '<div class="cpt-sched-row">'
-            f'<span class="cpt-sched-time">{hhmm}</span>'
-            f'<span class="cpt-sched-label">{label}</span>'
-            f'<span class="cpt-sched-in">in {fmt_time_until(int(dt.timestamp()))}</span>'
-            '</div>'
+        _barfig = go.Figure()
+        _barfig.add_trace(
+            go.Bar(
+                x=_bar_labels,
+                y=_bar_vals,
+                marker=dict(color="#c96442", line=dict(width=0)),
+                hovertemplate="<b>%{x}</b><br>%{y} runs<extra></extra>",
+            )
         )
-    _sched_html += '</div>'
+        _barfig.update_layout(
+            height=120,
+            margin=dict(l=20, r=20, t=10, b=28),
+            paper_bgcolor="#1c1b19",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="JetBrains Mono, monospace", size=9, color="#b0aea5"),
+            showlegend=False,
+            bargap=0.32,
+            hoverlabel=dict(
+                bgcolor="#0e0f10",
+                bordercolor="#c96442",
+                font=dict(family="JetBrains Mono, monospace", color="#faf9f5", size=10),
+            ),
+            xaxis=dict(
+                showgrid=False, zeroline=False, showline=False,
+                tickfont=dict(color="#b0aea5", size=9),
+            ),
+            yaxis=dict(
+                showgrid=False, zeroline=False, showline=False, showticklabels=False,
+            ),
+        )
+        st.plotly_chart(_barfig, use_container_width=True, config={"displayModeBar": False})
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown(
-        '<div class="cpt-forecast">'
-        f'<div class="cpt-forecast-head">forecast · 5h'
-        f'<span class="cpt-forecast-sub">{_sub}</span></div>'
-        f'<div class="cpt-forecast-head" '
-        'style="font-size:0.7rem;color:var(--fg-dim);margin-bottom:0;">'
-        f'{_headline}</div>'
-        '<div class="cpt-forecast-track">'
-        f'<div class="cpt-forecast-elapsed" style="width:{_elapsed_pct:.1f}%"></div>'
-        f'<div class="cpt-forecast-proj" '
-        f'style="left:{_proj_left:.1f}%;width:{_proj_width:.1f}%"></div>'
-        f'<div class="cpt-forecast-now" style="left:{_now_pct:.1f}%"></div>'
-        '</div>'
-        '<div class="cpt-forecast-legend">'
-        '<span><em>█</em> elapsed</span>'
-        '<span><em>▨</em> projected</span>'
-        '<span><em>│</em> now</span>'
-        f'<span>resets · {fmt_time_until(five_h_reset)}</span>'
-        '</div>'
-        f'{_sched_html}'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+        # ——— Forecast card (5-hour burn projection) ———
+        _cap = LIMITS["five_hour_tokens"]
+        _used = five_h_tokens
+        _remaining = max(0, _cap - _used)
+        _reset_in_sec = max(0, int(five_h_reset - time.time())) if five_h_reset else 0
+        _reset_in_min = _reset_in_sec // 60
+        _window_min = 300  # 5h
+        _elapsed_min = max(1, _window_min - _reset_in_min) if _reset_in_min else 1
+        _burn_per_min = (_used / _elapsed_min) if _elapsed_min > 0 else 0
+        _exhaust_in_min = int(_remaining / _burn_per_min) if _burn_per_min > 0 else None
+        _will_exhaust = _exhaust_in_min is not None and _exhaust_in_min < _reset_in_min
 
-    # ——— Vault pulse ———
-    pulse_items = list_vault_pulse(6)
-    if pulse_items:
-        pulse_html = '<div class="cpt-pulse-card"><div class="cpt-cat">vault pulse</div>'
-        for it in pulse_items:
-            try:
-                uri = obsidian_uri(it["path"])
-            except Exception:
-                uri = "#"
-            pulse_html += (
-                '<div class="cpt-pulse">'
-                f'<span class="cpt-verb {it["verb"]}">{it["verb"]}</span>'
-                '<div class="cpt-pulse-main">'
-                f'<div class="cpt-pulse-name">'
-                f'<a href="{uri}" target="_blank" '
-                'style="color:inherit;text-decoration:none;">'
-                f'{html_escape(it["name"])}</a></div>'
-                f'<div class="cpt-pulse-dir">{html_escape(it["dir"])}</div>'
-                '</div>'
-                f'<span class="cpt-pulse-ago">{fmt_ago(it["age_sec"])}</span>'
+        _elapsed_pct = min(100, _elapsed_min / _window_min * 100)
+        if _will_exhaust and _exhaust_in_min is not None:
+            _proj_end_min = _elapsed_min + _exhaust_in_min
+        else:
+            _proj_end_min = _window_min
+        _proj_pct = max(_elapsed_pct, min(100, _proj_end_min / _window_min * 100))
+        _proj_left = _elapsed_pct
+        _proj_width = max(0, _proj_pct - _elapsed_pct)
+        _now_pct = _elapsed_pct
+
+        if _will_exhaust and _exhaust_in_min is not None:
+            _hit = (datetime.now() + timedelta(minutes=_exhaust_in_min)).strftime("%H:%M")
+            _headline = f'cap at <em>{_hit}</em>'
+        else:
+            _headline = 'under cap <em>this window</em>'
+        _sub = (
+            f'burn · {fmt_tokens(int(_burn_per_min))}/min'
+            if _burn_per_min > 0 else 'burn · idle'
+        )
+
+        # Next scheduled routines — hardcoded schedule until real cron wired in
+        _scheduled = [
+            ("17:00", "evening digest"),
+            ("22:00", "vault compact"),
+            ("09:00", "morning brief"),
+        ]
+        _now_dt = datetime.now()
+        _sched_rows = []
+        for hhmm, label in _scheduled:
+            _h, _m = [int(x) for x in hhmm.split(":")]
+            _next = _now_dt.replace(hour=_h, minute=_m, second=0, microsecond=0)
+            if _next <= _now_dt:
+                _next = _next + timedelta(days=1)
+            _sched_rows.append((_next, hhmm, label))
+        _sched_rows.sort(key=lambda r: r[0])
+        _sched_html = '<div class="cpt-sched">'
+        for dt, hhmm, label in _sched_rows[:2]:
+            _sched_html += (
+                '<div class="cpt-sched-row">'
+                f'<span class="cpt-sched-time">{hhmm}</span>'
+                f'<span class="cpt-sched-label">{label}</span>'
+                f'<span class="cpt-sched-in">in {fmt_time_until(int(dt.timestamp()))}</span>'
                 '</div>'
             )
-        pulse_html += '</div>'
-        st.markdown(pulse_html, unsafe_allow_html=True)
+        _sched_html += '</div>'
 
-
-
-# ——— MAIN COLUMN ———
-with col_main:
-    hero_slot = st.empty()
-
-    def render_hero_error():
-        err = st.session_state.last_error or "unknown error"
-        label = (st.session_state.last_label or "skill").lower()
-        hero_slot.markdown(
-            f'<div class="hero-card error">'
-            f'<div class="hero-label">failed · {html_escape(label)}</div>'
-            f'<h2 class="hero-headline">run failed <em>·</em></h2>'
-            f'<pre class="error-detail">{html_escape(err)}</pre>'
-            f'<div class="error-hint">check logs or click ↻ rerun below</div>'
-            f'</div>',
+        st.markdown(
+            '<div class="cpt-forecast">'
+            f'<div class="cpt-forecast-head">forecast · 5h'
+            f'<span class="cpt-forecast-sub">{_sub}</span></div>'
+            f'<div class="cpt-forecast-head" '
+            'style="font-size:0.7rem;color:var(--fg-dim);margin-bottom:0;">'
+            f'{_headline}</div>'
+            '<div class="cpt-forecast-track">'
+            f'<div class="cpt-forecast-elapsed" style="width:{_elapsed_pct:.1f}%"></div>'
+            f'<div class="cpt-forecast-proj" '
+            f'style="left:{_proj_left:.1f}%;width:{_proj_width:.1f}%"></div>'
+            f'<div class="cpt-forecast-now" style="left:{_now_pct:.1f}%"></div>'
+            '</div>'
+            '<div class="cpt-forecast-legend">'
+            '<span><em>█</em> elapsed</span>'
+            '<span><em>▨</em> projected</span>'
+            '<span><em>│</em> now</span>'
+            f'<span>resets · {fmt_time_until(five_h_reset)}</span>'
+            '</div>'
+            f'{_sched_html}'
+            '</div>',
             unsafe_allow_html=True,
         )
 
-    def render_hero_idle():
-        if st.session_state.last_output:
-            last = st.session_state.last_label
-            saved_link = ""
-            if st.session_state.last_saved_path:
-                saved = Path(st.session_state.last_saved_path)
-                uri = obsidian_uri(saved)
-                rel = saved.relative_to(VAULT_PATH).as_posix()
-                saved_link = (
-                    f'<a class="obsidian-link" href="{uri}" target="_blank">◆ open in obsidian · {rel}</a>'
+        # ——— Vault pulse ———
+        pulse_items = list_vault_pulse(6)
+        if pulse_items:
+            pulse_html = '<div class="cpt-pulse-card"><div class="cpt-cat">vault pulse</div>'
+            for it in pulse_items:
+                try:
+                    uri = obsidian_uri(it["path"])
+                except Exception:
+                    uri = "#"
+                pulse_html += (
+                    '<div class="cpt-pulse">'
+                    f'<span class="cpt-verb {it["verb"]}">{it["verb"]}</span>'
+                    '<div class="cpt-pulse-main">'
+                    f'<div class="cpt-pulse-name">'
+                    f'<a href="{uri}" target="_blank" '
+                    'style="color:inherit;text-decoration:none;">'
+                    f'{html_escape(it["name"])}</a></div>'
+                    f'<div class="cpt-pulse-dir">{html_escape(it["dir"])}</div>'
+                    '</div>'
+                    f'<span class="cpt-pulse-ago">{fmt_ago(it["age_sec"])}</span>'
+                    '</div>'
                 )
+            pulse_html += '</div>'
+            st.markdown(pulse_html, unsafe_allow_html=True)
 
-            meta_html = ""
-            if st.session_state.last_cost is not None:
-                cost = st.session_state.last_cost
-                tok_in, tok_out = st.session_state.last_tokens or (None, None)
-                parts = [f'<span class="meta-val">${cost:.4f}</span>']
-                if tok_in is not None:
-                    parts.append(f'<span class="meta-val">{tok_in} in</span>')
-                if tok_out is not None:
-                    parts.append(f'<span class="meta-val">{tok_out} out</span>')
-                meta_html = f'<div class="meta-row">{" · ".join(parts)}</div>'
 
+
+    # ——— MAIN COLUMN ———
+    with col_main:
+        hero_slot = st.empty()
+
+        def render_hero_error():
+            err = st.session_state.last_error or "unknown error"
+            label = (st.session_state.last_label or "skill").lower()
             hero_slot.markdown(
-                f'<div class="hero-card">'
-                f'<div class="hero-label">last run · {last.lower()}</div>'
-                f'<h2 class="hero-headline">complete <em>·</em></h2>'
-                f'{saved_link}'
-                f'{meta_html}'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            hero_slot.markdown(
-                '<div class="hero-card">'
-                '<div class="hero-label">ready</div>'
-                '<h2 class="hero-headline">run a <em>skill</em> to begin'
-                '<span class="cursor-blink">█</span></h2>'
-                '<div style="color: var(--text-mute); font-size: 0.85rem; margin-top: 0.6rem;">'
-                'click a skill · press run · or type any prompt'
-                '</div></div>',
-                unsafe_allow_html=True,
-            )
-
-    def _clear_output():
-        st.session_state.last_output = ""
-        st.session_state.last_error = None
-        st.session_state.last_saved_path = None
-        st.session_state.last_cost = None
-        st.session_state.last_tokens = None
-        st.session_state.last_label = ""
-        st.session_state.last_prompt = None
-
-    # Rendered output (markdown) for last run
-    def render_last_output():
-        has_content = st.session_state.last_output or st.session_state.last_error
-        if has_content and not st.session_state.running:
-            with st.container():
-                col_view, col_rerun, col_toggle, col_clear = st.columns([3, 1, 0.7, 0.7])
-                with col_view:
-                    st.markdown(
-                        '<div class="caption-mono" style="margin-top:0.8rem;">output</div>',
-                        unsafe_allow_html=True,
-                    )
-                with col_rerun:
-                    if st.session_state.last_prompt and st.button(
-                        "↻ rerun", key="btn_rerun", use_container_width=True
-                    ):
-                        start_skill_run(st.session_state.last_label, st.session_state.last_prompt)
-                        st.rerun()
-                with col_toggle:
-                    view_toggle = st.toggle(
-                        "md",
-                        value=st.session_state.output_view_md,
-                        key="view_toggle",
-                        help="toggle markdown / raw",
-                    )
-                    st.session_state.output_view_md = view_toggle
-                with col_clear:
-                    st.button(
-                        "✕",
-                        key="btn_clear_output",
-                        use_container_width=True,
-                        help="clear output",
-                        on_click=_clear_output,
-                    )
-
-                st.markdown('<div class="output-body">', unsafe_allow_html=True)
-                if st.session_state.output_view_md:
-                    st.markdown(st.session_state.last_output)
-                else:
-                    st.code(st.session_state.last_output, language="markdown")
-                st.markdown('</div>', unsafe_allow_html=True)
-
-    # ——— RUNNING STATE: live fragment ———
-    if st.session_state.running:
-        @st.fragment(run_every=0.4)
-        def live_hero_fragment():
-            elapsed = int(time.time() - (RT.get("start_time") or time.time()))
-            phase = RT.get("current_phase") or "starting"
-            text_preview = RT.get("text", "")[-2500:]
-            phase_log = RT.get("phases", [])
-            phase_log_html = ""
-            if phase_log:
-                last_phases = phase_log[-6:]
-                phase_log_html = (
-                    f'<div class="phase-line">phases · '
-                    + " → ".join(
-                        f'<span class="phase-name">{html_escape(pretty_phase(p))}</span>'
-                        for p in last_phases
-                    )
-                    + "</div>"
-                )
-
-            preview_html = (
-                f'<pre class="stream-output">{html_escape(text_preview)}</pre>'
-                if text_preview else ""
-            )
-
-            label = st.session_state.active_skill or "skill"
-            hero_slot.markdown(
-                f'<div class="hero-card running">'
-                f'<div class="hero-label"><span class="pulse-dot small"></span>'
-                f'running · {elapsed}s · {html_escape(pretty_phase(phase))}</div>'
-                f'<h2 class="hero-headline">{html_escape(label.lower())} <em>·</em></h2>'
-                f'{phase_log_html}'
-                f'{preview_html}'
+                f'<div class="hero-card error">'
+                f'<div class="hero-label">failed · {html_escape(label)}</div>'
+                f'<h2 class="hero-headline">run failed <em>·</em></h2>'
+                f'<pre class="error-detail">{html_escape(err)}</pre>'
+                f'<div class="error-hint">check logs or click ↻ rerun below</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
 
-            if RT.get("done"):
+        def render_hero_idle():
+            if st.session_state.last_output:
+                last = st.session_state.last_label
+                saved_link = ""
+                if st.session_state.last_saved_path:
+                    saved = Path(st.session_state.last_saved_path)
+                    uri = obsidian_uri(saved)
+                    rel = saved.relative_to(VAULT_PATH).as_posix()
+                    saved_link = (
+                        f'<a class="obsidian-link" href="{uri}" target="_blank">◆ open in obsidian · {rel}</a>'
+                    )
+
+                meta_html = ""
+                if st.session_state.last_cost is not None:
+                    cost = st.session_state.last_cost
+                    tok_in, tok_out = st.session_state.last_tokens or (None, None)
+                    parts = [f'<span class="meta-val">${cost:.4f}</span>']
+                    if tok_in is not None:
+                        parts.append(f'<span class="meta-val">{tok_in} in</span>')
+                    if tok_out is not None:
+                        parts.append(f'<span class="meta-val">{tok_out} out</span>')
+                    meta_html = f'<div class="meta-row">{" · ".join(parts)}</div>'
+
+                hero_slot.markdown(
+                    f'<div class="hero-card">'
+                    f'<div class="hero-label">last run · {last.lower()}</div>'
+                    f'<h2 class="hero-headline">complete <em>·</em></h2>'
+                    f'{saved_link}'
+                    f'{meta_html}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                hero_slot.markdown(
+                    '<div class="hero-card">'
+                    '<div class="hero-label">ready</div>'
+                    '<h2 class="hero-headline">run a <em>skill</em> to begin'
+                    '<span class="cursor-blink">█</span></h2>'
+                    '<div style="color: var(--text-mute); font-size: 0.85rem; margin-top: 0.6rem;">'
+                    'click a skill · press run · or type any prompt'
+                    '</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+        def _clear_output():
+            st.session_state.last_output = ""
+            st.session_state.last_error = None
+            st.session_state.last_saved_path = None
+            st.session_state.last_cost = None
+            st.session_state.last_tokens = None
+            st.session_state.last_label = ""
+            st.session_state.last_prompt = None
+
+        # Rendered output (markdown) for last run
+        def render_last_output():
+            has_content = st.session_state.last_output or st.session_state.last_error
+            if has_content and not st.session_state.running:
+                with st.container():
+                    col_view, col_rerun, col_toggle, col_clear = st.columns([3, 1, 0.7, 0.7])
+                    with col_view:
+                        st.markdown(
+                            '<div class="caption-mono" style="margin-top:0.8rem;">output</div>',
+                            unsafe_allow_html=True,
+                        )
+                    with col_rerun:
+                        if st.session_state.last_prompt and st.button(
+                            "↻ rerun", key="btn_rerun", use_container_width=True
+                        ):
+                            start_skill_run(st.session_state.last_label, st.session_state.last_prompt)
+                            st.rerun()
+                    with col_toggle:
+                        view_toggle = st.toggle(
+                            "md",
+                            value=st.session_state.output_view_md,
+                            key="view_toggle",
+                            help="toggle markdown / raw",
+                        )
+                        st.session_state.output_view_md = view_toggle
+                    with col_clear:
+                        st.button(
+                            "✕",
+                            key="btn_clear_output",
+                            use_container_width=True,
+                            help="clear output",
+                            on_click=_clear_output,
+                        )
+
+                    st.markdown('<div class="output-body">', unsafe_allow_html=True)
+                    if st.session_state.output_view_md:
+                        st.markdown(st.session_state.last_output)
+                    else:
+                        st.code(st.session_state.last_output, language="markdown")
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+        # ——— RUNNING STATE: live fragment ———
+        if st.session_state.running:
+            @st.fragment(run_every=0.4)
+            def live_hero_fragment():
+                elapsed = int(time.time() - (RT.get("start_time") or time.time()))
+                phase = RT.get("current_phase") or "starting"
+                text_preview = RT.get("text", "")[-2500:]
+                phase_log = RT.get("phases", [])
+                phase_log_html = ""
+                if phase_log:
+                    last_phases = phase_log[-6:]
+                    phase_log_html = (
+                        f'<div class="phase-line">phases · '
+                        + " → ".join(
+                            f'<span class="phase-name">{html_escape(pretty_phase(p))}</span>'
+                            for p in last_phases
+                        )
+                        + "</div>"
+                    )
+
+                preview_html = (
+                    f'<pre class="stream-output">{html_escape(text_preview)}</pre>'
+                    if text_preview else ""
+                )
+
+                label = st.session_state.active_skill or "skill"
+                hero_slot.markdown(
+                    f'<div class="hero-card running">'
+                    f'<div class="hero-label"><span class="pulse-dot small"></span>'
+                    f'running · {elapsed}s · {html_escape(pretty_phase(phase))}</div>'
+                    f'<h2 class="hero-headline">{html_escape(label.lower())} <em>·</em></h2>'
+                    f'{phase_log_html}'
+                    f'{preview_html}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                if RT.get("done"):
+                    finalize_run_if_done(
+                        st.session_state.active_skill or "skill",
+                        st.session_state.active_prompt or "",
+                    )
+                    st.rerun(scope="app")
+
+            live_hero_fragment()
+
+            # Cancel button
+            st.markdown('<div class="cancel-btn">', unsafe_allow_html=True)
+            if st.button("✕ cancel run", key="btn_cancel", use_container_width=False):
+                cancel_current_run()
                 finalize_run_if_done(
                     st.session_state.active_skill or "skill",
                     st.session_state.active_prompt or "",
                 )
-                st.rerun(scope="app")
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        live_hero_fragment()
-
-        # Cancel button
-        st.markdown('<div class="cancel-btn">', unsafe_allow_html=True)
-        if st.button("✕ cancel run", key="btn_cancel", use_container_width=False):
-            cancel_current_run()
-            finalize_run_if_done(
-                st.session_state.active_skill or "skill",
-                st.session_state.active_prompt or "",
-            )
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    else:
-        if st.session_state.last_error:
-            render_hero_error()
         else:
-            render_hero_idle()
-        render_last_output()
-
-    # ——— UNIFIED PROMPT + SKILL CHIPS (hidden during run — takeover UX) ———
-    if "prompt_input_widget" not in st.session_state:
-        st.session_state.prompt_input_widget = ""
-    if "last_chip_label" not in st.session_state:
-        st.session_state.last_chip_label = None
-
-    def _load_chip(template: str, label: str):
-        st.session_state.prompt_input_widget = template
-        st.session_state.last_chip_label = label
-
-    def _fire_trigger(skill: dict):
-        try:
-            res = subprocess.run(
-                skill["command"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
-            if res.returncode == 0:
-                st.toast(f"▶ {skill['label']} triggered", icon="✓")
+            if st.session_state.last_error:
+                render_hero_error()
             else:
-                err = (res.stderr or res.stdout or "unknown").strip().splitlines()[-1][:120]
-                st.toast(f"✗ {skill['label']}: {err}", icon="⚠")
-        except Exception as e:
-            st.toast(f"✗ {skill['label']}: {e}", icon="⚠")
+                render_hero_idle()
+            render_last_output()
 
-    def _clear_prompt():
-        st.session_state.prompt_input_widget = ""
-        st.session_state.last_chip_label = None
+        # ——— UNIFIED PROMPT + SKILL CHIPS (hidden during run — takeover UX) ———
+        if "prompt_input_widget" not in st.session_state:
+            st.session_state.prompt_input_widget = ""
+        if "last_chip_label" not in st.session_state:
+            st.session_state.last_chip_label = None
 
-    clicked = None
+        def _load_chip(template: str, label: str):
+            st.session_state.prompt_input_widget = template
+            st.session_state.last_chip_label = label
 
-
-    if not st.session_state.running:
-        st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="cpt-cat">prompt</div>', unsafe_allow_html=True)
-        with st.form(key="form_unified", clear_on_submit=False, border=False):
-            prompt_val = st.text_area(
-                "prompt",
-                placeholder="type any prompt, or pick a skill below to load a template…",
-                label_visibility="collapsed",
-                key="prompt_input_widget",
-                height=120,
-            )
-            b1, b2 = st.columns([3, 1])
-            with b1:
-                submit = st.form_submit_button(
-                    "run →",
-                    use_container_width=True,
+        def _fire_trigger(skill: dict):
+            try:
+                res = subprocess.run(
+                    skill["command"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
                 )
-            with b2:
-                cleared = st.form_submit_button(
-                    "clear",
-                    use_container_width=True,
-                    on_click=_clear_prompt,
-                )
-            if submit:
-                text = (prompt_val or "").strip()
-                if not text:
-                    st.warning("prompt empty")
-                elif "{input}" in text:
-                    st.warning("replace {input} placeholder before running")
+                if res.returncode == 0:
+                    st.toast(f"▶ {skill['label']} triggered", icon="✓")
                 else:
-                    label = st.session_state.last_chip_label or "Ad-hoc"
-                    clicked = {"label": label, "prompt": text}
+                    err = (res.stderr or res.stdout or "unknown").strip().splitlines()[-1][:120]
+                    st.toast(f"✗ {skill['label']}: {err}", icon="⚠")
+            except Exception as e:
+                st.toast(f"✗ {skill['label']}: {e}", icon="⚠")
 
-        # Skill chips — st.button grid (no page reload, WebSocket rerun)
-        st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
-        _cat_rank = {c: i for i, c in enumerate(SKILL_CATEGORY_ORDER)}
-        _fallback_rank = len(SKILL_CATEGORY_ORDER)
-        skills_sorted = sorted(
-            SKILLS,
-            key=lambda s: (_cat_rank.get(s.get("category", "other"), _fallback_rank),),
-        )
-        _cols_per_row = 4
-        for category, group in groupby(skills_sorted, key=lambda s: s.get("category", "other")):
-            group_list = list(group)
-            st.markdown(
-                f'<div class="cpt-cat chip-cat">{html_escape(category)}</div>',
-                unsafe_allow_html=True,
+        def _clear_prompt():
+            st.session_state.prompt_input_widget = ""
+            st.session_state.last_chip_label = None
+
+        clicked = None
+
+
+        if not st.session_state.running:
+            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+            st.markdown('<div class="cpt-cat">prompt</div>', unsafe_allow_html=True)
+            with st.form(key="form_unified", clear_on_submit=False, border=False):
+                prompt_val = st.text_area(
+                    "prompt",
+                    placeholder="type any prompt, or pick a skill below to load a template…",
+                    label_visibility="collapsed",
+                    key="prompt_input_widget",
+                    height=120,
+                )
+                b1, b2 = st.columns([3, 1])
+                with b1:
+                    submit = st.form_submit_button(
+                        "run →",
+                        use_container_width=True,
+                    )
+                with b2:
+                    cleared = st.form_submit_button(
+                        "clear",
+                        use_container_width=True,
+                        on_click=_clear_prompt,
+                    )
+                if submit:
+                    text = (prompt_val or "").strip()
+                    if not text:
+                        st.warning("prompt empty")
+                    elif "{input}" in text:
+                        st.warning("replace {input} placeholder before running")
+                    else:
+                        label = st.session_state.last_chip_label or "Ad-hoc"
+                        clicked = {"label": label, "prompt": text}
+
+            # Skill chips — st.button grid (no page reload, WebSocket rerun)
+            st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
+            _cat_rank = {c: i for i, c in enumerate(SKILL_CATEGORY_ORDER)}
+            _fallback_rank = len(SKILL_CATEGORY_ORDER)
+            skills_sorted = sorted(
+                SKILLS,
+                key=lambda s: (_cat_rank.get(s.get("category", "other"), _fallback_rank),),
             )
-            # Chunk into rows of _cols_per_row
-            for row_start in range(0, len(group_list), _cols_per_row):
-                row = group_list[row_start:row_start + _cols_per_row]
-                cols = st.columns(_cols_per_row, gap="small")
-                for i, skill in enumerate(row):
-                    with cols[i]:
-                        label = skill["label"]
-                        desc = skill["description"]
-                        key = f"chip_{category}_{label}"
-                        if skill.get("disabled"):
-                            st.button(
-                                label,
-                                key=key,
-                                disabled=True,
-                                use_container_width=True,
-                                help=desc,
-                            )
-                        elif skill.get("trigger"):
-                            st.button(
-                                label,
-                                key=key,
-                                use_container_width=True,
-                                help=desc,
-                                on_click=_fire_trigger,
-                                args=(skill,),
-                            )
-                        else:
-                            st.button(
-                                label,
-                                key=key,
-                                use_container_width=True,
-                                help=desc,
-                                on_click=_load_chip,
-                                args=(skill["prompt_template"], label),
-                            )
-                # Fill remaining columns with empty placeholders to keep grid aligned
-                for _fill in range(len(row), _cols_per_row):
-                    with cols[_fill]:
-                        st.markdown("&nbsp;", unsafe_allow_html=True)
+            _cols_per_row = 4
+            for category, group in groupby(skills_sorted, key=lambda s: s.get("category", "other")):
+                group_list = list(group)
+                st.markdown(
+                    f'<div class="cpt-cat chip-cat">{html_escape(category)}</div>',
+                    unsafe_allow_html=True,
+                )
+                # Chunk into rows of _cols_per_row
+                for row_start in range(0, len(group_list), _cols_per_row):
+                    row = group_list[row_start:row_start + _cols_per_row]
+                    cols = st.columns(_cols_per_row, gap="small")
+                    for i, skill in enumerate(row):
+                        with cols[i]:
+                            label = skill["label"]
+                            desc = skill["description"]
+                            key = f"chip_{category}_{label}"
+                            if skill.get("disabled"):
+                                st.button(
+                                    label,
+                                    key=key,
+                                    disabled=True,
+                                    use_container_width=True,
+                                    help=desc,
+                                )
+                            elif skill.get("trigger"):
+                                st.button(
+                                    label,
+                                    key=key,
+                                    use_container_width=True,
+                                    help=desc,
+                                    on_click=_fire_trigger,
+                                    args=(skill,),
+                                )
+                            else:
+                                st.button(
+                                    label,
+                                    key=key,
+                                    use_container_width=True,
+                                    help=desc,
+                                    on_click=_load_chip,
+                                    args=(skill["prompt_template"], label),
+                                )
+                    # Fill remaining columns with empty placeholders to keep grid aligned
+                    for _fill in range(len(row), _cols_per_row):
+                        with cols[_fill]:
+                            st.markdown("&nbsp;", unsafe_allow_html=True)
 
-        # Trigger run
-        if clicked:
-            st.session_state.last_label = clicked["label"]
-            st.session_state.last_prompt = clicked["prompt"]
-            start_skill_run(clicked["label"], clicked["prompt"])
-            st.rerun()
+            # Trigger run
+            if clicked:
+                st.session_state.last_label = clicked["label"]
+                st.session_state.last_prompt = clicked["prompt"]
+                start_skill_run(clicked["label"], clicked["prompt"])
+                st.rerun()
+
+
+# ── v2 audience tab — placeholder; commits 7 fills marquee + filtered skills ──
+with audience_tab:
+    if _layout_v == "v2":
+        st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="v2-panel"><div class="v2-panel-head">audience marquee · coming in commit 7</div>'
+            '<div style="color:var(--fg-mute);font-size:0.78rem">'
+            'YtWeekReview card lands here — verdict chips, top/under performer cards, '
+            'bar-chart of per-video views, RUN NEW button writing intent JSON to system/queue/.'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+
+with research_tab:
+    if _layout_v == "v2":
+        st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="v2-panel"><div class="v2-panel-head">research marquee · coming in commit 8</div>'
+            '<div style="color:var(--fg-mute);font-size:0.78rem">'
+            'MorningBrief 2x2 grid lands here — Headlines / YT Trending / X Conversation / '
+            'Content Opportunities, with coverage chip strip.'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
