@@ -2284,26 +2284,16 @@ V2_CSS = r"""
     text-decoration: line-through;
 }
 
-/* TokenBurn refresh-pull button — compact terracotta pill */
-.v2-tb-refresh-slot { margin-top: -8px; }
-.v2-tb-refresh-slot + div [data-testid="stButton"] > button,
-.v2-tb-refresh-slot ~ div [data-testid="stButton"] > button {
-    background: rgba(219, 116, 70, 0.12) !important;
+/* Quicknav pull pill — terracotta-tinted, matches status chip footprint */
+.quicknav .qn-pull {
+    background: rgba(219, 116, 70, 0.10);
     color: var(--cc-accent) !important;
-    border: 1px solid rgba(219, 116, 70, 0.35) !important;
-    border-radius: 99px !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 10px !important;
-    letter-spacing: 0.14em !important;
-    text-transform: uppercase !important;
-    padding: 4px 10px !important;
-    box-shadow: none !important;
+    border: 1px solid rgba(219, 116, 70, 0.32);
 }
-.v2-tb-refresh-slot + div [data-testid="stButton"] > button:hover,
-.v2-tb-refresh-slot ~ div [data-testid="stButton"] > button:hover {
-    background: rgba(219, 116, 70, 0.22) !important;
-    border-color: rgba(219, 116, 70, 0.55) !important;
-    box-shadow: 0 0 12px -4px rgba(219, 116, 70, 0.5) !important;
+.quicknav .qn-pull:hover {
+    background: rgba(219, 116, 70, 0.22);
+    border-color: rgba(219, 116, 70, 0.55);
+    box-shadow: 0 0 10px -2px rgba(219, 116, 70, 0.45);
 }
 
 /* ── Demo-mode pill ───────────────────────────────────────── */
@@ -3095,7 +3085,7 @@ for k, v in defaults.items():
 
 st.markdown('<div class="cpt-header-marker"></div>', unsafe_allow_html=True)
 
-# Terminal launch via query-param (claude code pill in quicknav)
+# Quicknav query-param actions: terminal launch + metrics-pull queue
 _action_q = st.query_params.get("action")
 if _action_q == "terminal":
     try:
@@ -3103,6 +3093,13 @@ if _action_q == "terminal":
         st.toast("Terminal opened at vault.", icon="✅")
     except Exception as e:
         st.toast(f"Failed: {e}", icon="⚠️")
+    st.query_params.clear()
+elif _action_q == "pull-latest":
+    try:
+        uid, _ = write_queue_intent("metrics-pull")
+        st.toast(f"queued metrics-pull · {uid[:8]}", icon="✓")
+    except Exception as e:
+        st.toast(f"pull failed: {e}", icon="⚠️")
     st.query_params.clear()
 
 if MASCOT_IDLE_URL:
@@ -3162,6 +3159,7 @@ st.markdown(
         <a href="{daily_note_uri}" target="_blank"><span class="qn-icon">§</span>daily note</a>
         <a href="{runs_folder_uri}" target="_blank"><span class="qn-icon">¶</span>runs folder</a>
         <a href="{drafts_folder_uri}" target="_blank"><span class="qn-icon">※</span>drafts</a>
+        <a class="qn-pull" href="?action=pull-latest" target="_self" title="Queue /metrics-pull skill"><span class="qn-icon">↻</span>pull</a>
         {_status_html}
     </div>
     """,
@@ -4111,19 +4109,6 @@ if _enabled_cards.get("tokenburn", True):
         ),
         unsafe_allow_html=True,
     )
-    # Refresh row — fires /metrics-pull through the runner so usage + audience
-    # numbers refresh without re-running the skill manually.
-    _refresh_cols = st.columns([5, 1])
-    with _refresh_cols[1]:
-        st.markdown('<div class="v2-tb-refresh-slot"></div>', unsafe_allow_html=True)
-        if st.button(
-            "↻ pull latest",
-            key="tb_refresh",
-            help="Queue /metrics-pull skill — refreshes 5h usage, audience counts, latest video",
-            use_container_width=True,
-        ):
-            uid, _ = write_queue_intent("metrics-pull")
-            st.toast(f"queued metrics-pull · {uid[:8]}", icon="✓")
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
