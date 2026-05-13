@@ -2824,6 +2824,52 @@ def render_gauge(
 # ═══════════════════════════════════════════════════════════
 
 LATEST_VIDEO_JSON = VAULT_PATH / "system" / "metrics" / "latest-video.json"
+METRICS_CSV = VAULT_PATH / "system" / "metrics" / "metrics.csv"
+LAST_PULL_JSON = VAULT_PATH / "system" / "metrics" / "last-pull.json"
+
+
+def read_audience_metrics() -> dict:
+    """Return latest value per (source, metric) from metrics.csv. Falls back to DEMO_AUDIENCE."""
+    demo_on = getattr(_cfg, "DEMO_MODE", False)
+    demo = getattr(_cfg, "DEMO_AUDIENCE", None) or {}
+    # canonical keys we surface as cards
+    keys = {
+        "youtube_subs":        ("youtube",   "subscribers"),
+        "youtube_views_28d":   ("youtube",   "views_28d"),
+        "instagram_followers": ("instagram", "followers"),
+        "tiktok_followers":    ("tiktok",    "followers"),
+    }
+    if demo_on:
+        return {k: dict(demo[k]) for k in keys if k in demo}
+
+    out: dict[str, dict] = {}
+    try:
+        if METRICS_CSV.exists():
+            # last-wins per (source, metric) pair — file is append-only
+            latest: dict[tuple[str, str], dict] = {}
+            with METRICS_CSV.open("r", encoding="utf-8") as f:
+                header = f.readline()
+                for line in f:
+                    parts = line.rstrip("\n").split(",")
+                    if len(parts) < 5:
+                        continue
+                    ts, source, metric, value, status = parts[:5]
+                    try:
+                        val = float(value)
+                    except ValueError:
+                        continue
+                    latest[(source, metric)] = {"value": val, "ts": ts, "status": status}
+            for key, pair in keys.items():
+                if pair in latest:
+                    out[key] = latest[pair]
+    except OSError:
+        pass
+
+    # fill any missing with demo (so a partial-vault deployment still renders)
+    for k in keys:
+        if k not in out and k in demo:
+            out[k] = dict(demo[k])
+    return out
 
 
 def _parse_iso(ts: str) -> datetime | None:
@@ -2892,6 +2938,79 @@ def render_latest_upload(video: dict | None) -> str:
         '</div>'
         '</div>'
     )
+
+
+def _status_to_dot(status: str | None, ts: str | None) -> str:
+    s = (status or "").lower()
+    if s == "ok":
+        # treat as stale if >36h old
+        dt = _parse_iso(ts or "")
+        if dt:
+            try:
+                age_h = (datetime.now(dt.tzinfo) - dt).total_seconds() / 3600
+                if age_h > 36:
+                    return "stale"
+            except Exception:
+                pass
+        return ""
+    if s in ("mock", ""):
+        return "mock"
+    if s == "stale":
+        return "stale"
+    return "err"
+
+
+def render_audience_card(label: str, tone: str, watermark: str, metric: dict | None, suffix: str = "") -> str:
+    if not metric:
+        # render empty shell rather than crash
+        return (
+            f'<div class="v2-audience-card" data-tone="{tone}">'
+            f'<div class="v2-audience-watermark">{html_escape(watermark)}</div>'
+            f'<div class="v2-audience-head"><span class="v2-dot stale"></span>{html_escape(label)}</div>'
+            '<div class="v2-audience-value">—</div>'
+            '<div class="v2-audience-sub">no data</div>'
+            '</div>'
+        )
+    value = metric.get("value") or 0
+    ts = metric.get("ts")
+    status = metric.get("status")
+    dot = _status_to_dot(status, ts)
+    ago_html = ""
+    dt = _parse_iso(ts or "")
+    if dt:
+        try:
+            age = int((datetime.now(dt.tzinfo) - dt).total_seconds())
+            ago_html = f"updated {fmt_ago(max(0, age))} ago"
+        except Exception:
+            pass
+    val_html = fmt_tokens(int(value)) if value >= 1000 else f"{int(value):,}"
+    if suffix:
+        val_html = f"{val_html}<span style='font-size:0.7rem;color:var(--fg-mute);margin-left:0.3rem'>{suffix}</span>"
+    return (
+        f'<div class="v2-audience-card" data-tone="{tone}">'
+        f'<div class="v2-audience-watermark">{html_escape(watermark)}</div>'
+        f'<div class="v2-audience-head"><span class="v2-dot {dot}"></span>{html_escape(label)}</div>'
+        f'<div class="v2-audience-value">{val_html}</div>'
+        f'<div class="v2-audience-sub">{ago_html}</div>'
+        '</div>'
+    )
+
+
+def render_audience_row() -> None:
+    aud = read_audience_metrics()
+    cols = st.columns(4, gap="small")
+    cards = [
+        ("youtube subs",  "youtube",   "YT",  "youtube_subs",        ""),
+        ("youtube views · 28d", "youtube", "▶",  "youtube_views_28d",   ""),
+        ("instagram",     "instagram", "IG",  "instagram_followers", ""),
+        ("tiktok",        "tiktok",    "TT",  "tiktok_followers",    ""),
+    ]
+    for col, (label, tone, mark, key, suf) in zip(cols, cards):
+        with col:
+            st.markdown(
+                render_audience_card(label, tone, mark, aud.get(key), suf),
+                unsafe_allow_html=True,
+            )
 
 
 five_h_reset = (rate_limits.get("five_hour") or {}).get("resets_at")
@@ -2979,6 +3098,10 @@ if _enabled_cards.get("latest_upload", True):
     _latest_html = render_latest_upload(_latest)
     if _latest_html:
         st.markdown(_latest_html, unsafe_allow_html=True)
+
+if _enabled_cards.get("audience_row", True):
+    render_audience_row()
+    st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
