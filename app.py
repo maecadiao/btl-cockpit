@@ -1445,11 +1445,12 @@ BOOT_ANIMATION_CSS = """
     100% { left: max(0px, calc(var(--tb-target) - 80px)); width: min(80px, var(--tb-target)); }
 }
 
+/* Shared smooth deceleration curve — expo ease-out, no overshoot */
 .v2-tb-wrap     { animation: boot-rise-soft       0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
-.v2-tb-fill     { animation: boot-fill-shrink     1.10s cubic-bezier(0.34, 1.0, 0.36, 1) 0.40s both; }
-.v2-tb-endpoint { animation: boot-endpoint-slide  1.10s cubic-bezier(0.34, 1.0, 0.36, 1) 0.40s both; }
-.v2-tb-comet    { animation: boot-comet-slide     1.10s cubic-bezier(0.34, 1.0, 0.36, 1) 0.40s both; }
-.v2-tb-pct-num  { animation: boot-pct-count-down  1.10s cubic-bezier(0.34, 1.0, 0.36, 1) 0.40s both; }
+.v2-tb-fill     { animation: boot-fill-shrink     1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
+.v2-tb-endpoint { animation: boot-endpoint-slide  1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
+.v2-tb-comet    { animation: boot-comet-slide     1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
+.v2-tb-pct-num  { animation: boot-pct-count-down  1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
 
 /* Render the counter value via CSS counter() so the animated CSS var drives text */
 .v2-tb-pct-num {
