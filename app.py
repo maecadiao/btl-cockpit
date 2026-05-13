@@ -3659,10 +3659,11 @@ def read_queue_state(recent_window_min: int = 30) -> list[dict]:
                 args = data.get("args") or {}
                 items.append({
                     "id": data.get("id", f.stem),
-                    "skill": args.get("label") or data.get("skill", "?"),
+                    "skill": args.get("source_label") or args.get("label") or data.get("skill", "?"),
                     "status": "queued",
                     "ts": data.get("ts_queued"),
                     "elapsed_sec": None,
+                    "deliverable_path": None,
                 })
             except (OSError, json.JSONDecodeError):
                 continue
@@ -3680,7 +3681,7 @@ def read_queue_state(recent_window_min: int = 30) -> list[dict]:
             except (OSError, json.JSONDecodeError):
                 continue
             args = data.get("args") or {}
-            skill = args.get("label") or data.get("skill", "?")
+            skill = args.get("source_label") or args.get("label") or data.get("skill", "?")
             status = (data.get("status") or "running").lower()
             ts_completed = data.get("ts_completed")
             ts_started = data.get("ts_started") or data.get("ts_queued")
@@ -3702,12 +3703,16 @@ def read_queue_state(recent_window_min: int = 30) -> list[dict]:
                     elapsed = int((datetime.now(sdt.tzinfo) - sdt).total_seconds())
                 if status == "ok":
                     status = "running"  # safety net if file lacks ts_completed
+            # Runner records deliverable_path relative to vault root, e.g.
+            # "inbox/reports/inbox-briefs/2026-05-13-abc.md". Pass through so the
+            # queue panel can link to the ACTUAL output, not the runner log.
             items.append({
                 "id": data.get("id", f.stem),
                 "skill": skill,
                 "status": status,
                 "ts": ts_completed or ts_started,
                 "elapsed_sec": elapsed,
+                "deliverable_path": data.get("deliverable_path"),
             })
 
     # Sort: queued + running first, then most-recently-completed
@@ -4509,10 +4514,22 @@ with overview_tab:
                 elapsed_html = ""
                 if it["elapsed_sec"] is not None:
                     elapsed_html = f'<span class="v2-queue-meta">{fmt_ago(it["elapsed_sec"])}</span>'
-                run_path = RUNS_BG_DIR / f"{it['id']}.md"
+                # Link only when the run is fully complete (status "ok") AND
+                # the runner has recorded a deliverable_path. Points at the
+                # actual output (e.g. inbox-brief markdown), not the runner
+                # log file. Queued / running rows show no link.
                 link_html = ""
-                if run_path.exists():
-                    link_html = f'<a href="{obsidian_uri(run_path)}" target="_blank" class="v2-queue-link">↗</a>'
+                if st_class == "ok" and it.get("deliverable_path"):
+                    deliverable_full = VAULT_PATH / it["deliverable_path"]
+                    if deliverable_full.exists():
+                        try:
+                            link_html = (
+                                f'<a href="{obsidian_uri(deliverable_full)}" '
+                                f'target="_blank" class="v2-queue-link" '
+                                f'title="open deliverable">open ↗</a>'
+                            )
+                        except Exception:
+                            link_html = ""
                 _q_html += (
                     '<div class="v2-queue-row">'
                     f'<span class="v2-queue-dot {dot_class}"></span>'
