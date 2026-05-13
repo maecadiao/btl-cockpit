@@ -1418,26 +1418,44 @@ BOOT_ANIMATION_CSS = """
     animation: boot-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.95s both;
 }
 
-/* ── v2 card boot sequence — single smooth rise + staggered cascade ──
-   One keyframe (boot-rise-soft), staggered per card via delay only.
-   Fewer competing animations = no stutter. */
+/* ── v2 card boot sequence ──
+   One soft-rise keyframe reused across every card, staggered by delay.
+   TokenBurn gets a "drop-from-100" motion: bar shrinks from 100% to
+   target, counter ticks down from 100 to target via CSS @property. */
 @keyframes boot-rise-soft {
     0%   { opacity: 0; transform: translateY(10px); }
     100% { opacity: 1; transform: translateY(0); }
 }
-@keyframes boot-fill-sweep {
-    0%   { clip-path: inset(0 100% 0 0); }
-    100% { clip-path: inset(0 0 0 0); }
+
+@property --tb-pct-num { syntax: '<integer>'; initial-value: 100; inherits: false; }
+@keyframes boot-pct-count-down {
+    0%   { --tb-pct-num: 100; }
+    100% { --tb-pct-num: var(--tb-target-num); }
 }
-@keyframes boot-pct-pop {
-    0%   { opacity: 0; transform: scale(0.85); }
-    100% { opacity: 1; transform: scale(1); }
+@keyframes boot-fill-shrink {
+    0%   { width: 100%; }
+    100% { width: var(--tb-target); }
+}
+@keyframes boot-endpoint-slide {
+    0%   { left: 100%; }
+    100% { left: var(--tb-target); }
+}
+@keyframes boot-comet-slide {
+    0%   { left: calc(100% - 80px); width: 80px; }
+    100% { left: max(0px, calc(var(--tb-target) - 80px)); width: min(80px, var(--tb-target)); }
 }
 
-/* TokenBurn — wrap rises whole, only fill sweeps + pct pops to draw the eye */
-.v2-tb-wrap   { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
-.v2-tb-fill   { animation: boot-fill-sweep 0.95s cubic-bezier(0.4, 0, 0.2, 1) 0.50s both; }
-.v2-tb-pct    { animation: boot-pct-pop    0.50s cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s both; }
+.v2-tb-wrap     { animation: boot-rise-soft       0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
+.v2-tb-fill     { animation: boot-fill-shrink     1.10s cubic-bezier(0.34, 1.0, 0.36, 1) 0.40s both; }
+.v2-tb-endpoint { animation: boot-endpoint-slide  1.10s cubic-bezier(0.34, 1.0, 0.36, 1) 0.40s both; }
+.v2-tb-comet    { animation: boot-comet-slide     1.10s cubic-bezier(0.34, 1.0, 0.36, 1) 0.40s both; }
+.v2-tb-pct-num  { animation: boot-pct-count-down  1.10s cubic-bezier(0.34, 1.0, 0.36, 1) 0.40s both; }
+
+/* Render the counter value via CSS counter() so the animated CSS var drives text */
+.v2-tb-pct-num {
+    counter-reset: pct var(--tb-pct-num, 100);
+}
+.v2-tb-pct-num::after { content: counter(pct); }
 
 /* Audience row + Latest Upload + marquees + panels — cascading rise */
 .v2-latest                { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both; }
@@ -3451,15 +3469,15 @@ def render_tokenburn_meter(used: int, budget: int, reset_at: float | None, last_
         # Meter grid: pct | bar | counts
         '<div class="v2-tb-meter">'
         '<div class="v2-tb-pct">'
-        f'<span class="v2-tb-pct-num">{pct_int}</span>'
+        f'<span class="v2-tb-pct-num" style="--tb-target-num:{pct_int}"></span>'
         '<span class="v2-tb-pct-unit">%</span>'
         '</div>'
         '<div class="v2-tb-bar-wrap">'
         '<div class="v2-tb-track">'
-        f'<div class="v2-tb-fill" style="width:{pct:.1f}%"></div>'
+        f'<div class="v2-tb-fill" style="--tb-target:{pct:.1f}%;width:{pct:.1f}%"></div>'
         f'<div class="v2-tb-proj" style="left:{proj_left:.1f}%;width:{proj_width:.1f}%"></div>'
-        f'<div class="v2-tb-comet" style="left:max(0px, calc({pct:.1f}% - 80px));width:min(80px, {pct:.1f}%)"></div>'
-        f'<div class="v2-tb-endpoint" style="left:{pct:.1f}%"></div>'
+        f'<div class="v2-tb-comet" style="--tb-target:{pct:.1f}%;left:max(0px, calc({pct:.1f}% - 80px));width:min(80px, {pct:.1f}%)"></div>'
+        f'<div class="v2-tb-endpoint" style="--tb-target:{pct:.1f}%;left:{pct:.1f}%"></div>'
         '<div class="v2-tb-scan"></div>'
         '</div>'
         '<div class="v2-tb-ticks">'
