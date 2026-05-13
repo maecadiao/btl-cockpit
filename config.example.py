@@ -151,43 +151,192 @@ DEMO_LATEST_VIDEO = {
 }
 
 
+# Category display order (left-to-right on dashboard).
+SKILL_CATEGORY_ORDER = ["memory", "productivity", "research", "content", "finance", "custom"]
+
+
+# Standard autonomy preamble — prepended automatically at runtime by the app's
+# _wrap_autonomy() helper so users see only the task portion in the prompt box.
+# You can include or omit it here; the app handles both cases idempotently.
+_AUTO = (
+    "Act autonomously. Do not ask for confirmation. "
+    "Do not use AskUserQuestion. "
+)
+
+
 SKILLS = [
-    # ─── DAILY ROUTINES (no input) ───
+    # ─── MEMORY ──────────────────────────────────────────────
+    # Skills that manage your second brain — cleanup, indexing,
+    # consolidation. Swap with your own slash-commands.
+    {
+        "label": "Vault Cleanup",
+        "prompt_template": _AUTO + "Run the /vault-cleanup skill",
+        "description": "Archive stale notes older than 7 days",
+        "category": "memory",
+    },
+    {
+        "label": "KB Index",
+        "prompt_template": _AUTO + "Run /index-vault on: {input}",
+        "description": "Reindex a folder into your knowledge base",
+        "category": "memory",
+        "input_placeholder": "folder path",
+    },
+    {
+        "label": "KB Query",
+        "prompt_template": _AUTO + "Run /kb-query: {input}",
+        "description": "Search your knowledge base",
+        "category": "memory",
+        "input_placeholder": "question for KB",
+    },
+    {
+        "label": "KB Status",
+        "prompt_template": _AUTO + "Run the /kb-status skill",
+        "description": "Health + indexed doc count",
+        "category": "memory",
+    },
+
+    # ─── PRODUCTIVITY ────────────────────────────────────────
+    # Daily routines — runnable via the parallel queue path
+    # (chip click while another run is foregrounded queues this
+    # through the runner pool).
     {
         "label": "Morning Brief",
-        "prompt_template": (
-            "Act autonomously. Do not ask for confirmation. "
-            "Do not use AskUserQuestion. Run the /morning skill"
-        ),
-        "description": "Daily briefing — swap for whatever /morning-style skill you have",
-        "category": "daily",
+        "prompt_template": _AUTO + "Run the /morning skill",
+        "description": "AI trend briefing + inbox triage + sponsor drafts",
+        "category": "productivity",
     },
     {
         "label": "Inbox Triage",
-        "prompt_template": (
-            "Act autonomously. Do not ask for confirmation. "
-            "Do not use AskUserQuestion. Run the /inbox-brief skill"
-        ),
-        "description": "Scan recent inbox and categorize",
-        "category": "daily",
+        "prompt_template": _AUTO + "Run the /inbox-brief skill",
+        "description": "Scan last 24h inbox and categorize",
+        "category": "productivity",
+    },
+    {
+        "label": "Plan Today",
+        "prompt_template": _AUTO + "Run the /plan-today skill",
+        "description": "Build today's plan from calendar + carryover",
+        "category": "productivity",
+    },
+    {
+        "label": "Weekly Review",
+        "prompt_template": _AUTO + "Run the /weekly-review skill",
+        "description": "7-day retrospective with channel + personal sections",
+        "category": "productivity",
     },
 
-    # ─── CONTENT / RESEARCH (take input) ───
+    # ─── RESEARCH ────────────────────────────────────────────
+    # Investigative skills — typically take a topic/URL input.
     {
         "label": "Deep Research",
-        "prompt_template": (
-            "Act autonomously. Do not ask for confirmation. "
-            "Do not use AskUserQuestion. Run /deep-research on: {input}"
-        ),
-        "description": "Multi-source research across web, YouTube, etc.",
-        "category": "content",
+        "prompt_template": _AUTO + "Run /deep-research on: {input}",
+        "description": "Multi-source research (web, YouTube, X, GitHub)",
+        "category": "research",
         "input_placeholder": "topic to research",
     },
+    {
+        "label": "YT Pipeline",
+        "prompt_template": _AUTO + "Run /yt-pipeline to research: {input}",
+        "description": "YouTube search + NotebookLM analysis pipeline",
+        "category": "research",
+        "input_placeholder": "research query",
+    },
+    {
+        "label": "YT Search",
+        "prompt_template": _AUTO + "Run /yt-search for: {input}",
+        "description": "Structured YouTube search with metadata",
+        "category": "research",
+        "input_placeholder": "search query",
+    },
+    {
+        "label": "NotebookLM",
+        "prompt_template": _AUTO + "Run /notebooklm: {input}",
+        "description": "Create notebook, add sources, generate artifacts",
+        "category": "research",
+        "input_placeholder": "topic or source URLs",
+    },
+
+    # ─── CONTENT ─────────────────────────────────────────────
+    # Content-creation skills — titles, hooks, outlines, cascades.
+    {
+        "label": "Title Ideas",
+        "prompt_template": _AUTO + "Run /yt-titles for a video about: {input}",
+        "description": "YouTube title ideation cross-referenced with top performers",
+        "category": "content",
+        "input_placeholder": "video description",
+    },
+    {
+        "label": "Hooks",
+        "prompt_template": _AUTO + "Run /yt-hooks for: {input}",
+        "description": "Desire-based hooks + Three Hook Alignment",
+        "category": "content",
+        "input_placeholder": "video topic",
+    },
+    {
+        "label": "Outline",
+        "prompt_template": _AUTO + "Run /outlines for: {input}",
+        "description": "Full YouTube outline scaffold",
+        "category": "content",
+        "input_placeholder": "video concept",
+    },
+    {
+        "label": "Content Cascade",
+        "prompt_template": _AUTO + "Run /content-cascade on: {input}",
+        "description": "YouTube URL → blog + thread + LinkedIn drafts",
+        "category": "content",
+        "input_placeholder": "YouTube URL",
+    },
+
+    # ─── FINANCE ─────────────────────────────────────────────
+    # Bookkeeping placeholders — wire to whatever finance skills you have.
+    {
+        "label": "Categorize",
+        "prompt_template": _AUTO + "Run the /books-categorize skill",
+        "description": "Label newest CSV — biz/personal + category",
+        "category": "finance",
+    },
+    {
+        "label": "Monthly P&L",
+        "prompt_template": _AUTO + "Run /books-monthly for: {input}",
+        "description": "Income, expense, net vs prior month",
+        "category": "finance",
+        "input_placeholder": "month (e.g. 2026-03 or 'last month')",
+    },
+    {
+        "label": "Anomaly Scan",
+        "prompt_template": _AUTO + "Run the /books-anomaly skill",
+        "description": "Outliers, fraud markers, burn-rate spikes",
+        "category": "finance",
+    },
+
+    # ─── CUSTOM ──────────────────────────────────────────────
+    # Slots for your own custom skills — or stubs to remind you what
+    # to build. Set `disabled: True` to render greyed-out placeholders.
     {
         "label": "Quick Prompt",
         "prompt_template": "{input}",
         "description": "Send any free-form prompt to Claude Code",
-        "category": "content",
+        "category": "custom",
         "input_placeholder": "type any prompt",
+    },
+    {
+        "label": "Shopify CLI",
+        "prompt_template": "",
+        "description": "e-commerce ops — coming soon",
+        "category": "custom",
+        "disabled": True,
+    },
+    {
+        "label": "Stripe CLI",
+        "prompt_template": "",
+        "description": "SaaS / payments — coming soon",
+        "category": "custom",
+        "disabled": True,
+    },
+    {
+        "label": "CRM",
+        "prompt_template": "",
+        "description": "lead pipeline — coming soon",
+        "category": "custom",
+        "disabled": True,
     },
 ]

@@ -1,135 +1,92 @@
 # Agentic OS Dashboard
 
-A local visual cockpit for your Claude Code usage. Shows rate limits, daily activity, routine runs, and one-click buttons to launch your Claude Code skills.
+A local visual cockpit for your Claude Code usage + skill dispatch. Three-tab layout (Overview / Audience / Research), live TokenBurn meter, parallel skill runs through a background queue, audience-metric cards, marquees that pull from your vault.
 
-Runs entirely on your machine. Reads data from your local `~/.claude/` folder. Nothing ships to the cloud.
+Runs entirely on your machine. Reads from `~/.claude/` and your vault. Nothing ships to the cloud.
 
 ---
 
 ## What you're getting
 
-- Three **gauges** at the top — your 5-hour token window, weekly token window, and daily routine cap
-- A **cumulative activity chart** showing token usage over time with a live pulse animation
-- **MCP server status strip** — which MCP servers are connected
-- **Skill buttons** — click to run any Claude Code skill (configurable)
-- **Activity feed** — tail of what Claude has been doing today
+**Shared zone (above tabs):**
+- **AGENTICOS header** + quicknav pills (terminal / vault / daily note / runs folder / drafts / ↻ pull / status)
+- **TokenBurn 5h marquee** — HUD-bracketed bar with live usage %, projection band, scan-line, comet trail. Sources from real `tokens_5h` rows written by the `/metrics-pull` skill into `system/metrics/metrics.csv`.
+- **MCP integrations strip** — connected MCP server health dots.
 
-Everything styled like a cockpit/terminal readout. Dark Claude-warm palette.
+**Three tabs:**
+- **Overview** — Schedule (today's calendar) + Agent Runs · 30D chart side-by-side. Below: legacy skill picker + streaming hero + sidebar (background queue, recent runs, 7-day bars, forecast, vault pulse).
+- **Audience** — Latest Upload card + 4 platform metric cards (YT subs / YT views 28d / Instagram / TikTok) + YtWeekReview marquee with Altair bar chart + verdict chips + top/under performer cards.
+- **Research** — MorningBrief 2×2 grid (Headlines / YT Trending / X Conversation / Content Opps) with coverage chip strip pulled from the latest `/morning` skill output.
+
+**Behavior:**
+- Click any skill chip → loads its template into the prompt box (autonomy preamble wrapped invisibly).
+- Hit "run →" → spawns `claude.exe -p` inline, streams phases + tokens live into the hero card.
+- Click chips DURING a foreground run → queues them via `system/queue/<uuid>.json` so the agentic-os-runner daemon picks them up in parallel. Max 3 concurrent. Visible in the **§ BACKGROUND QUEUE** sidebar card (polls every 3s; dots flip queued → running → done).
+- Click `↻ pull` in quicknav → queues `/metrics-pull` skill → refreshes TokenBurn % + audience counts + latest video.
+
+Dark Anthropic-warm palette. Subtle terracotta crosshatch atmosphere. Drop-from-100 boot animation on TokenBurn.
 
 ---
 
 ## Prerequisites
 
-Before you touch the code, make sure you have:
+1. **Python 3.10+** — [download here](https://www.python.org/downloads/). On Windows, check "Add Python to PATH" during install.
+2. **Git** — [download here](https://git-scm.com/downloads).
+3. **Claude Code CLI** installed + signed in. Run it at least once so it generates session data.
+4. **A terminal** (PowerShell / Terminal.app / your shell of choice).
 
-1. **Python 3.10+** installed — [download here](https://www.python.org/downloads/). During install on Windows, **check the box that says "Add Python to PATH"**.
-2. **Git** installed — [download here](https://git-scm.com/downloads).
-3. **Claude Code CLI** installed and signed in — if you haven't, follow [the official install guide](https://docs.claude.com/claude-code). You need to have run Claude Code at least once so it generates session data.
-4. **A terminal** you're comfortable opening:
-   - Windows: PowerShell or Command Prompt
-   - Mac: Terminal.app or iTerm
-   - Linux: whatever shell you use
-
-Verify everything works:
+Verify:
 
 ```bash
-python --version      # should say 3.10 or higher
-git --version         # any recent version
-claude --version      # confirms Claude Code is installed
+python --version      # 3.10+
+git --version
+claude --version
 ```
 
-If any of those fail, fix that first.
+If any fail, fix that first.
 
 ---
 
-## Step 1 — Clone the repo
-
-Open your terminal and run:
+## Step 1 — Clone
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/agentic-os-dashboard.git
+git clone https://github.com/cth9191/agentic-os-dashboard.git
 cd agentic-os-dashboard
 ```
-
-(Replace `YOUR-USERNAME` with the actual GitHub URL you were given.)
 
 ---
 
 ## Step 2 — Install dependencies
 
-Still inside the `agentic-os-dashboard` folder, run:
-
 ```bash
 pip install -r requirements.txt
 ```
 
-This installs Streamlit and the other Python libraries the dashboard needs. Takes about a minute.
+Installs Streamlit, Altair, plotly, pandas. ~1 minute.
 
-**If you get permission errors on Mac/Linux**, try `pip install --user -r requirements.txt` instead.
+Permission errors on Mac/Linux? Try `pip install --user -r requirements.txt`.
 
 ---
 
 ## Step 3 — Create your `config.py`
 
-The repo ships a template called `config.example.py`. Your personal config lives in `config.py`, which is gitignored so your paths and skills stay on your machine.
-
-Copy the template:
-
 ```bash
-# Windows PowerShell / CMD
+# Windows
 copy config.example.py config.py
-
 # Mac / Linux
 cp config.example.py config.py
 ```
 
-Now open `config.py` in any text editor (VS Code, Notepad, TextEdit, whatever) and edit these fields at the top:
+Open `config.py` in an editor. Edit the top section:
 
-- **`VAULT_PATH`** — the folder where Claude Code should run. For most people, this is their Obsidian vault or a project folder. Example on Mac: `Path("/Users/yourname/Documents/my-vault")`.
-- **`VAULT_NAME`** — display name shown in the dashboard header. Just a label.
-- **`CLAUDE_CLI`** — the full path to the `claude` executable. Find it by running `where claude` (Windows) or `which claude` (Mac/Linux) in your terminal.
-- **`CLAUDE_PLAN`** — set to `"pro"`, `"max"`, or `"team"` depending on your Anthropic plan. Controls the daily routine cap on the third gauge.
+- **`VAULT_PATH`** — folder Claude Code runs in. Usually your Obsidian vault or main project folder. Mac example: `Path("/Users/yourname/Documents/my-vault")`.
+- **`VAULT_NAME`** — display name shown in the header.
+- **`CLAUDE_CLI`** — full path to `claude` executable. Find with `where claude` (Windows) or `which claude` (Mac/Linux).
+- **`CLAUDE_PLAN`** — `"pro"`, `"max"`, `"team"`, or `"enterprise"`. Controls daily routine cap.
 
-The `SKILLS` list at the bottom defines the buttons. See the next section for how to customize it.
+The `SKILLS` list at the bottom defines the chip buttons. The example ships with placeholder skills across memory/productivity/research/content/finance/custom categories — keep, swap, or delete to taste.
 
-**Don't overthink this step.** If a path looks wrong, the dashboard will show an empty state instead of crashing. You can iterate.
-
-### Adding your own skills
-
-The `SKILLS` list in `config.py` is where the dashboard buttons come from. Each entry is a Python dict with these fields:
-
-```python
-{
-    "label": "Morning Brief",                    # button text
-    "prompt_template": (                         # what gets sent to claude -p "<here>"
-        "Act autonomously. Do not ask for confirmation. "
-        "Do not use AskUserQuestion. Run the /morning skill"
-    ),
-    "description": "AI news briefing",           # subtitle under the label
-    "category": "daily",                         # "daily" or "content"
-}
-```
-
-For skills that need input (a research topic, a URL, a video description), add `{input}` inside `prompt_template` and include `input_placeholder`:
-
-```python
-{
-    "label": "Deep Research",
-    "prompt_template": (
-        "Act autonomously. Do not ask for confirmation. "
-        "Do not use AskUserQuestion. Run /deep-research on: {input}"
-    ),
-    "description": "Multi-source research",
-    "category": "content",
-    "input_placeholder": "topic to research",
-}
-```
-
-**Tips:**
-- Start every `prompt_template` with `"Act autonomously. Do not ask for confirmation. Do not use AskUserQuestion."` — stops Claude from blocking the run mid-way to ask questions.
-- `category: "daily"` groups the button with routines (counted against your daily routine cap). `category: "content"` groups with content/creative buttons.
-- You can add as many or as few as you want. Delete the examples you don't use.
-- Not sure what to add? See `PROMPTS.md` for prompts you can give Claude Code to build your `SKILLS` list for you.
+`config.py` is gitignored. Your edits stay local.
 
 ---
 
@@ -139,121 +96,124 @@ For skills that need input (a research topic, a URL, a video description), add `
 streamlit run app.py
 ```
 
-Streamlit opens a browser tab at `http://localhost:8501`. If it doesn't open automatically, paste that URL into your browser.
+Opens `http://localhost:8501`. If it doesn't auto-open, paste the URL.
 
 **First-run expectations:**
 
-- If you've been using Claude Code for a while, gauges and chart populate immediately.
-- If you're brand new to Claude Code, you'll see empty gauges. Run a Claude Code session or two, then refresh the dashboard. Data appears once your `~/.claude/usage-data/session-meta/` folder has files.
+- If you've been using Claude Code, TokenBurn populates once `/metrics-pull` runs (click the ↻ pull pill in quicknav).
+- Empty vault? Set `DEMO_MODE = True` in `config.py` — all cards render mocked data so you can verify the layout before wiring real feeds.
+- Audience cards expect `<vault>/system/metrics/metrics.csv` with `claude_code/tokens_5h` + `youtube/subscribers` + `instagram/followers` + `tiktok/followers` rows. The `/metrics-pull` skill writes them.
 
-**To stop the dashboard:** go back to the terminal and press `Ctrl+C`.
+**Stop:** `Ctrl+C` in the terminal.
 
 ---
 
-## Step 5 — Adapt it to you (with Claude Code)
+## Step 5 — Adapt it (with Claude Code)
 
-This is the fun part. The dashboard was built with Claude Code and it's built to be modified with Claude Code.
+The dashboard was built with Claude Code and is built to be modified with Claude Code.
 
-Open a terminal in the `agentic-os-dashboard` folder and run `claude`. Then try prompts like:
+In the repo folder run `claude` and try:
 
-> "Look at this dashboard. I want to swap the terracotta accent for a cool blue palette. Show me the changes before applying."
+> "Look at this dashboard. Swap the terracotta accent for a cool blue palette. Show me the changes before applying."
 
-> "Add a fourth gauge at the top that tracks my GitHub commits today by reading `git log`."
+> "Add a metric card row for my Stripe MRR — read the latest `stripe/mrr` row from `<vault>/system/metrics/metrics.csv`."
 
-> "Rename the skill buttons and replace them with my own Claude Code skills. Here are the ones I want: [list]."
+> "Rename the skill chips and replace them with the slash commands I actually use. Here are mine: [list]."
 
-> "Change the header text from 'AGENTIC OS' to my brand name. Update the favicon too."
+> "Hide the audience tab if I don't have audience metrics yet."
 
-See `PROMPTS.md` for a longer list of tested starter prompts.
+> "Re-skin the TokenBurn marquee in a green palette for my framework demo recording."
+
+See `PROMPTS.md` for tested starter prompts.
+
+---
+
+## Wiring the live data feeds
+
+Three feeds populate the dashboard. All are optional — the layout renders coherently when any are missing.
+
+### `system/metrics/metrics.csv`
+Append-only CSV: `timestamp,source,metric,value,status,error`. Each row is one metric snapshot. The dashboard reads the **latest** row per `(source, metric)` pair.
+
+Cards consume:
+- `claude_code/tokens_5h` → TokenBurn %
+- `youtube/subscribers`, `youtube/views_28d` → audience cards
+- `instagram/followers`, `tiktok/followers` → audience cards
+
+Populate via the `/metrics-pull` skill (separate repo). Click the `↻ pull` pill in quicknav to queue a refresh.
+
+### `system/metrics/latest-video.json`
+JSON written by your YouTube pull script:
+```json
+{"title": "…", "url": "https://youtu.be/…", "views": 1571, "likes": 51,
+ "comments": 1, "published_at": "…", "ts": "…", "status": "ok"}
+```
+Feeds the Latest Upload card.
+
+### `inbox/reports/yt-reviews/*.md` + `inbox/reports/morning/*.md`
+Markdown reports the dashboard parses to populate the YtWeekReview marquee + MorningBrief grid. Frontmatter + standard section headings (TL;DR / Uploads / Top performer / Underperformer for reviews; Headlines / YouTube Trending / Web / X / GitHub / Content Opportunities for briefs). See `inbox/reports/_index.md` in the [agentic-os-vault-template] repo for the expected shape.
+
+---
+
+## Parallel skill runs
+
+Two execution paths:
+
+**Foreground** — form submit. Spawns `claude.exe -p` in a daemon thread on the Streamlit server. Streams stream-json events back into the live hero card. Page refresh during a foreground run loses the live feed (subprocess keeps running, output saves to `dashboard-runs/<date>/`).
+
+**Background queue** — chip click during a foreground run, or the `↻ pull` pill. Writes intent JSON to `system/queue/<uuid>.json`. The agentic-os-runner daemon (separate repo) picks up + executes via its own pool (MAX_CONCURRENT=3 by default). Queue panel polls every 3s and shows live status (queued → running → ok/err) with deep-link to the deliverable on completion.
+
+Queueable skills are limited to runner-known names (see `RUNNER_SKILLS` set in `app.py` near line ~4790). Skills outside that allowlist toast a warning instead of queueing. The runner repo can be extended to add more — see [agentic-os-runner].
 
 ---
 
 ## Making it "always on" (optional)
 
-Running `streamlit run app.py` in a terminal every day is annoying. Here are four ways to upgrade, from easiest to most polished.
-
-### Option A — Double-click launcher (simplest)
-
-A desktop shortcut that starts the server and opens the browser. One click, no terminal.
-
-**Windows:** create `start-dashboard.bat` with this content:
-
+### Double-click launcher
+Windows `start-dashboard.bat`:
 ```bat
 @echo off
 cd /d C:\path\to\agentic-os-dashboard
 start "" http://localhost:8501
 streamlit run app.py
 ```
-
-Right-click → "Send to → Desktop (create shortcut)".
-
-**Mac:** create `start-dashboard.command` with this content:
-
+Mac `start-dashboard.command`:
 ```bash
 #!/bin/bash
 cd /path/to/agentic-os-dashboard
 open http://localhost:8501
 streamlit run app.py
 ```
+`chmod +x` and double-click.
 
-Then run `chmod +x start-dashboard.command`. Double-click to launch.
+### Autostart on login
+Ask Claude Code:
+> "Set up this Streamlit app to auto-launch on Windows login via Task Scheduler. Run in background, no visible terminal. Open at localhost:8501."
 
-### Option B — Autostart on login (always available at localhost:8501)
+Or for Mac:
+> "Set up this Streamlit app to auto-launch on macOS login via launchd."
 
-Dashboard runs in the background 24/7. You bookmark `http://localhost:8501` and open it anytime.
+### System tray
+> "Wrap this Streamlit app in a Python system-tray app via `pystray`. Icon starts/stops the server and opens browser."
 
-Easiest path: ask Claude Code to set this up for you.
-
-> "Set up this Streamlit app to auto-launch on Windows login using Task Scheduler. Run in the background with no visible terminal. Open at localhost:8501."
-
-Mac version:
-
-> "Set up this Streamlit app to auto-launch on macOS login using launchd. Log output to a file. I want to visit localhost:8501 anytime and have it load."
-
-Claude Code will generate the config file, tell you where to put it, and walk through the install.
-
-### Option C — System tray icon
-
-Dashboard lives as a tray/menubar icon. Click → opens dashboard in browser. Quit from the tray.
-
-> "Wrap this Streamlit app in a Python system tray app using `pystray`. Icon in the tray starts/stops the server and opens the browser."
-
-### Option D — Native desktop app (most polished)
-
-Ship as a real app with its own window. No browser tab. Users don't know Streamlit exists under the hood.
-
-Options: Tauri, Electron, or Pake. Heavier build.
-
-> "Wrap this Streamlit app in a Tauri desktop shell. On launch, start the Streamlit server in the background and open a native window pointing at localhost:8501."
-
-This is the path if you're productizing for others, not just yourself.
+### Native desktop wrapper
+> "Wrap this Streamlit app in a Tauri shell. On launch, start the Streamlit server in the background and open a native window pointing at localhost:8501."
 
 ---
 
 ## Troubleshooting
 
-**"streamlit: command not found"**
-Python installed but scripts folder not on PATH. On Windows, reinstall Python with "Add to PATH" checked. On Mac: `export PATH="$HOME/.local/bin:$PATH"` in your `~/.zshrc`.
+**"streamlit: command not found"** — Python installed but scripts folder not on PATH. Windows: reinstall Python with "Add to PATH" checked. Mac: `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`.
 
-**Dashboard loads but gauges are empty**
-Your `~/.claude/usage-data/session-meta/` folder has no data yet. Run a Claude Code session. Refresh.
+**TokenBurn stuck at 0%** — no `claude_code/tokens_5h` row in `<vault>/system/metrics/metrics.csv` yet. Click the `↻ pull` pill in quicknav to queue `/metrics-pull`. If the skill isn't installed, install it from the agentic-os-vault-template repo or set `DEMO_MODE = True` temporarily.
 
-**"Permission denied" when running skills**
-`PERMISSION_MODE` in `config.py` is set to `bypassPermissions`. If that's too risky for you, change to `"default"` — Claude will prompt per-tool.
+**"Permission denied" when a skill runs** — `PERMISSION_MODE` in `config.py` is `bypassPermissions` by default. Change to `"default"` if you want Claude to prompt per-tool.
 
-**Dashboard shows my paths not yours**
-You're running the original `config.py`. Go back to Step 3 and edit the paths.
+**Port 8501 already in use** — `streamlit run app.py --server.port 8502`.
 
-**Port 8501 already in use**
-Another Streamlit app is running. Kill it, or start this one on a different port: `streamlit run app.py --server.port 8502`.
+**Queue chips do nothing** — skills outside the runner allowlist can't queue. Either run them foreground (load template into prompt + hit "run →"), or extend the runner's dispatch table.
 
----
-
-## What happens when you change the code
-
-Streamlit auto-reloads when you save a `.py` file. Browser tab updates live. No restart needed.
-
-**Exception:** `.streamlit/config.toml` changes require a full restart (Ctrl+C, then `streamlit run app.py` again).
+**Page refresh during a run loses the streaming view** — by design. Subprocess keeps running, output saves to `dashboard-runs/`. Use the queue path (chip click during a foreground run) for long jobs you want to walk away from.
 
 ---
 
@@ -261,14 +221,23 @@ Streamlit auto-reloads when you save a `.py` file. Browser tab updates live. No 
 
 - `app.py` — the whole dashboard (one big Streamlit file)
 - `config.example.py` — template config. Copy to `config.py` and edit.
-- `config.py` — **gitignored**. Your personal paths, plan, and skills. Never pushed to GitHub.
-- `requirements.txt` — Python dependencies
+- `config.py` — **gitignored**. Your personal paths, plan, and skills.
+- `requirements.txt` — Python deps
 - `.streamlit/config.toml` — Streamlit theme + server settings
-- `assets/` — images, robot mascot sprites
+- `assets/` — images, mascot sprites
 - `PROMPTS.md` — starter prompts for customizing with Claude Code
+- `DESIGN.md` — visual + architecture notes
+- `HANDOFF.md` — original v1 build log
+
+---
+
+## Companion repos
+
+- **agentic-os-runner** — background daemon that picks up `system/queue/*.json` intents and executes via `claude.exe -p`. Required for parallel queue runs to actually fire.
+- **agentic-os-vault-template** — opinionated vault skeleton with `system/metrics/`, `system/queue/`, `system/runs/`, `inbox/reports/`, daily-note schema. Drop-in companion to the dashboard.
 
 ---
 
 ## License
 
-MIT. Do whatever you want with it.
+MIT. Build whatever you want with it.
