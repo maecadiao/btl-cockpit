@@ -1719,7 +1719,7 @@ V2_CSS = r"""
     display: grid;
     grid-template-columns: auto 1fr auto;
     gap: 22px;
-    align-items: center;
+    align-items: start;
 }
 .v2-tb-pct {
     display: flex;
@@ -1729,7 +1729,11 @@ V2_CSS = r"""
     font-variant-numeric: tabular-nums;
     text-shadow: 0 0 18px rgba(255, 138, 92, 0.55);
     font-family: 'JetBrains Mono', monospace;
+    /* Nudge pct up so its baseline sits on the bar's vertical center
+       instead of the bar+ticks group center. 64px line aligned to 38px bar. */
+    margin-top: -10px;
 }
+.v2-tb-counts { align-self: center; }
 .v2-tb-pct-num {
     font-size: 64px;
     font-weight: 600;
