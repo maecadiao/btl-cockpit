@@ -2085,6 +2085,30 @@ V2_CSS = r"""
 .v2-driver-row.done .v2-driver-box { background: var(--cc-accent); color: var(--bg); border-color: var(--cc-accent); }
 .v2-driver-row.done .v2-driver-label { color: var(--cc-fg-2); text-decoration: line-through; }
 
+/* ── Throughput panel (replaces drivers slot) ─────────────── */
+.v2-thru-panel { padding: 14px 18px 10px; }
+.v2-thru-panel .v2-panel-head {
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.v2-thru-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--cc-fg-2);
+    text-transform: none;
+    font-variant-numeric: tabular-nums;
+}
+.v2-thru-svg { margin: 4px -6px 0 -6px; }
+.v2-thru-svg .activity-chart-wrap { margin: 0; }
+.v2-thru-svg .activity-svg { height: 92px; width: 100%; }
+.v2-thru-svg .activity-axis {
+    font-size: 9px;
+    color: var(--cc-fg-2);
+    margin-top: 2px;
+    padding: 0 4px;
+}
+
 /* Native st.checkbox style override for Daily Drivers — write-back enabled. */
 .v2-panel-drivers-head {
     /* the panel-head card sits directly above the checkbox stack so they read as one block */
@@ -4019,10 +4043,11 @@ else:
 
 with overview_tab:
 
-    # ── Schedule + Daily Drivers (2-col) ──────────────────────
+    # ── Schedule + Throughput chart (2-col) ───────────────────
     _show_sched = _enabled_cards.get("schedule", True)
-    _show_drv = _enabled_cards.get("daily_drivers", True)
-    if _show_sched or _show_drv:
+    _show_drv   = _enabled_cards.get("daily_drivers", False)
+    _show_thru  = _enabled_cards.get("throughput", True)
+    if _show_sched or _show_drv or _show_thru:
         _today_iso = date.today().isoformat()
         _daily = parse_daily_note(_today_iso)
         _sd_cols = st.columns(2, gap="small")
@@ -4032,6 +4057,18 @@ with overview_tab:
         with _sd_cols[1]:
             if _show_drv:
                 render_daily_drivers_widget(_daily["drivers"], _today_iso)
+            elif _show_thru:
+                # 30-day agent-runs throughput — same SVG geometry, panel-styled chrome
+                st.markdown(
+                    '<div class="v2-panel v2-thru-panel">'
+                    '<div class="v2-panel-head">'
+                    '<span>§ AGENT RUNS · 30D</span>'
+                    f'<span class="v2-thru-meta">{_cum_total:,} total · {_cum_30d} last 30d</span>'
+                    '</div>'
+                    f'<div class="v2-thru-svg">{_build_activity_svg(df_cum)}</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
         st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
     col_main, col_side = st.columns([2.6, 1], gap="large")

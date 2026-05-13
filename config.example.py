@@ -110,7 +110,11 @@ ENABLED_CARDS = {
     "yt_week_review": True,   # audience marquee
     "morning_brief":  True,   # research marquee
     "schedule":       True,   # overview lower-left
-    "daily_drivers":  True,   # overview lower-right
+    "daily_drivers":  False,  # overview lower-right — write-back loop causes Streamlit
+                              # to rerun the whole page on each toggle, which feels jarring
+                              # next to Obsidian's instant click. Disabled by default.
+                              # Flip to True if you want the experimental checkboxes.
+    "throughput":     True,   # 30-day agent-runs chart, sits in the slot drivers used to fill
 }
 
 # ───────────────────────────────────────────────────────────────
