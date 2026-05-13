@@ -2291,7 +2291,7 @@ V2_CSS = r"""
 }
 .v2-queue-row {
     display: grid;
-    grid-template-columns: 10px 1fr auto auto auto;
+    grid-template-columns: 10px 1fr 56px 42px 54px;
     gap: 8px;
     align-items: center;
     padding: 4px 0;
@@ -2299,6 +2299,9 @@ V2_CSS = r"""
     font-size: 11px;
     border-bottom: 1px dashed var(--cc-ring);
 }
+.v2-queue-row > .v2-queue-status { text-align: right; }
+.v2-queue-row > .v2-queue-meta   { text-align: right; }
+.v2-queue-row > .v2-queue-link-slot { text-align: right; }
 .v2-queue-row:last-child { border-bottom: none; }
 .v2-queue-dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -4511,32 +4514,36 @@ with overview_tab:
                     "queued":  "queued",
                     "ok":      "done",
                 }.get(st_class, "err")
-                elapsed_html = ""
-                if it["elapsed_sec"] is not None:
-                    elapsed_html = f'<span class="v2-queue-meta">{fmt_ago(it["elapsed_sec"])}</span>'
+                elapsed_html = (
+                    f'<span class="v2-queue-meta">{fmt_ago(it["elapsed_sec"])}</span>'
+                    if it["elapsed_sec"] is not None
+                    else '<span class="v2-queue-meta">—</span>'
+                )
                 # Link only when the run is fully complete (status "ok") AND
                 # the runner has recorded a deliverable_path. Points at the
                 # actual output (e.g. inbox-brief markdown), not the runner
-                # log file. Queued / running rows show no link.
-                link_html = ""
+                # log file. Queued / running / error rows render an empty
+                # slot so every row keeps the same column widths.
+                link_inner = ""
                 if st_class == "ok" and it.get("deliverable_path"):
                     deliverable_full = VAULT_PATH / it["deliverable_path"]
                     if deliverable_full.exists():
                         try:
-                            link_html = (
+                            link_inner = (
                                 f'<a href="{obsidian_uri(deliverable_full)}" '
                                 f'target="_blank" class="v2-queue-link" '
                                 f'title="open deliverable">open ↗</a>'
                             )
                         except Exception:
-                            link_html = ""
+                            link_inner = ""
+                link_slot = f'<span class="v2-queue-link-slot">{link_inner or "&nbsp;"}</span>'
                 _q_html += (
                     '<div class="v2-queue-row">'
                     f'<span class="v2-queue-dot {dot_class}"></span>'
                     f'<span class="v2-queue-label">{html_escape(it["skill"])}</span>'
                     f'<span class="v2-queue-status">{st_class}</span>'
                     f'{elapsed_html}'
-                    f'{link_html}'
+                    f'{link_slot}'
                     '</div>'
                 )
             _q_html += '</div>'
