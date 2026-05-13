@@ -2048,16 +2048,22 @@ V2_CSS = r"""
     align-items: center;
     gap: 6px;
 }
+.v2-sched-list {
+    column-count: 2;
+    column-gap: 24px;
+    column-rule: 1px dashed var(--cc-ring);
+}
 .v2-sched-row {
     display: grid;
-    grid-template-columns: 56px 1fr;
-    gap: 12px;
+    grid-template-columns: 52px 1fr;
+    gap: 10px;
     align-items: center;
-    padding: 6px 0;
+    padding: 5px 0;
     border-bottom: 1px dashed var(--cc-ring);
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     line-height: 1.4;
+    break-inside: avoid;
 }
 .v2-sched-row:last-child { border-bottom: none; }
 .v2-sched-row .v2-sched-time { color: var(--cc-accent); font-weight: 500; }
@@ -2085,11 +2091,21 @@ V2_CSS = r"""
 .v2-driver-row.done .v2-driver-box { background: var(--cc-accent); color: var(--bg); border-color: var(--cc-accent); }
 .v2-driver-row.done .v2-driver-label { color: var(--cc-fg-2); text-decoration: line-through; }
 
-/* ── Throughput panel (replaces drivers slot) ─────────────── */
-.v2-thru-panel { padding: 14px 18px 10px; }
+/* ── Throughput + Schedule panels — matched heights ─────── */
+.v2-sched-panel, .v2-thru-panel {
+    min-height: 240px;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 20px 14px;
+}
+.v2-sched-panel .v2-panel-head,
+.v2-thru-panel .v2-panel-head {
+    margin-bottom: 8px;
+}
+.v2-sched-panel > .v2-sched-list,
+.v2-sched-panel > .v2-sched-list-single { flex: 1 1 auto; }
 .v2-thru-panel .v2-panel-head {
     justify-content: space-between;
-    margin-bottom: 4px;
 }
 .v2-thru-meta {
     font-family: 'JetBrains Mono', monospace;
@@ -2099,13 +2115,19 @@ V2_CSS = r"""
     text-transform: none;
     font-variant-numeric: tabular-nums;
 }
-.v2-thru-svg { margin: 4px -6px 0 -6px; }
-.v2-thru-svg .activity-chart-wrap { margin: 0; }
-.v2-thru-svg .activity-svg { height: 92px; width: 100%; }
+.v2-thru-svg {
+    margin: 6px -6px 0 -6px;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: stretch;
+}
+.v2-thru-svg .activity-chart-wrap { margin: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+.v2-thru-svg .activity-svg { height: 160px; width: 100%; flex: 1 1 auto; }
 .v2-thru-svg .activity-axis {
     font-size: 9px;
     color: var(--cc-fg-2);
-    margin-top: 2px;
+    margin-top: 4px;
     padding: 0 4px;
 }
 
@@ -3761,16 +3783,18 @@ def parse_daily_note(date_iso: str | None = None) -> dict:
 
 def render_schedule_panel(events: list[dict]) -> str:
     if not events:
-        body = '<div style="color:var(--fg-mute);font-size:0.78rem">no schedule today</div>'
+        body = '<div style="color:var(--cc-fg-2);font-size:12px">no schedule today</div>'
     else:
         rows = "".join(
             f'<div class="v2-sched-row"><span class="v2-sched-time">{html_escape(e["time"])}</span>'
             f'<span class="v2-sched-label">{html_escape(e["label"])}</span></div>'
             for e in events
         )
-        body = rows
+        # CSS-columns flow into 2 columns when >=4 events; single column otherwise.
+        list_class = "v2-sched-list" if len(events) >= 4 else "v2-sched-list-single"
+        body = f'<div class="{list_class}">{rows}</div>'
     return (
-        '<div class="v2-panel">'
+        '<div class="v2-panel v2-sched-panel">'
         '<div class="v2-panel-head">§ SCHEDULE · TODAY</div>'
         f'{body}</div>'
     )
@@ -4058,11 +4082,11 @@ with overview_tab:
             if _show_drv:
                 render_daily_drivers_widget(_daily["drivers"], _today_iso)
             elif _show_thru:
-                # 30-day agent-runs throughput — same SVG geometry, panel-styled chrome
+                # 30-day throughput chart — placeholder metric, swap name for any skill mix
                 st.markdown(
                     '<div class="v2-panel v2-thru-panel">'
                     '<div class="v2-panel-head">'
-                    '<span>§ AGENT RUNS · 30D</span>'
+                    '<span>§ AUTOMATIONS · 30D</span>'
                     f'<span class="v2-thru-meta">{_cum_total:,} total · {_cum_30d} last 30d</span>'
                     '</div>'
                     f'<div class="v2-thru-svg">{_build_activity_svg(df_cum)}</div>'
