@@ -1427,11 +1427,6 @@ BOOT_ANIMATION_CSS = """
     100% { opacity: 1; transform: translateY(0); }
 }
 
-@property --tb-pct-num { syntax: '<integer>'; initial-value: 100; inherits: false; }
-@keyframes boot-pct-count-down {
-    0%   { --tb-pct-num: 100; }
-    100% { --tb-pct-num: var(--tb-target-num); }
-}
 @keyframes boot-fill-shrink {
     0%   { width: 100%; }
     100% { width: var(--tb-target); }
@@ -1444,19 +1439,21 @@ BOOT_ANIMATION_CSS = """
     0%   { left: calc(100% - 80px); width: 80px; }
     100% { left: max(0px, calc(var(--tb-target) - 80px)); width: min(80px, var(--tb-target)); }
 }
+@keyframes boot-pct-fade-in {
+    0%   { opacity: 0; transform: scale(0.88); }
+    100% { opacity: 1; transform: scale(1); }
+}
 
-/* Shared smooth deceleration curve — expo ease-out, no overshoot */
+/* Shared smooth deceleration curve — expo ease-out, no overshoot.
+   Counter-tick animation was removed because Streamlit reruns drop
+   BOOT_ANIMATION_CSS (gated by _boot_animated session flag), which
+   left the CSS @property + counter() trick blank on rerun. Pct text
+   now renders as static int + just fades in alongside the bar. */
 .v2-tb-wrap     { animation: boot-rise-soft       0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
 .v2-tb-fill     { animation: boot-fill-shrink     1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
 .v2-tb-endpoint { animation: boot-endpoint-slide  1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
 .v2-tb-comet    { animation: boot-comet-slide     1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
-.v2-tb-pct-num  { animation: boot-pct-count-down  1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
-
-/* Render the counter value via CSS counter() so the animated CSS var drives text */
-.v2-tb-pct-num {
-    counter-reset: pct var(--tb-pct-num, 100);
-}
-.v2-tb-pct-num::after { content: counter(pct); }
+.v2-tb-pct-num  { animation: boot-pct-fade-in     0.80s cubic-bezier(0.16, 1, 0.30, 1) 1.10s both; }
 
 /* Audience row + Latest Upload + marquees + panels — cascading rise */
 .v2-latest                { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both; }
@@ -3547,7 +3544,7 @@ def render_tokenburn_meter(used: int, budget: int, reset_at: float | None, last_
         # Meter grid: pct | bar | counts
         '<div class="v2-tb-meter">'
         '<div class="v2-tb-pct">'
-        f'<span class="v2-tb-pct-num" style="--tb-target-num:{pct_int}"></span>'
+        f'<span class="v2-tb-pct-num">{pct_int}</span>'
         '<span class="v2-tb-pct-unit">%</span>'
         '</div>'
         '<div class="v2-tb-bar-wrap">'
@@ -4753,6 +4750,7 @@ with overview_tab:
         clicked = None
 
 
+        # ─── Prompt form (only when idle — running run owns the streaming hero)
         if not st.session_state.running:
             st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
             st.markdown('<div class="cpt-cat">prompt</div>', unsafe_allow_html=True)
@@ -4788,67 +4786,82 @@ with overview_tab:
                         # so the CLI still receives the full skill invocation.
                         clicked = {"label": label, "prompt": _wrap_autonomy(text)}
 
-            # Skill chips — st.button grid (no page reload, WebSocket rerun)
-            st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
-            _cat_rank = {c: i for i, c in enumerate(SKILL_CATEGORY_ORDER)}
-            _fallback_rank = len(SKILL_CATEGORY_ORDER)
-            skills_sorted = sorted(
-                SKILLS,
-                key=lambda s: (_cat_rank.get(s.get("category", "other"), _fallback_rank),),
-            )
-            _cols_per_row = 4
-            for category, group in groupby(skills_sorted, key=lambda s: s.get("category", "other")):
-                group_list = list(group)
-                st.markdown(
-                    f'<div class="cpt-cat chip-cat">{html_escape(category)}</div>',
-                    unsafe_allow_html=True,
+        # ─── Skill chips — ALWAYS visible.
+        # Click while idle: loads template into prompt box.
+        # Click while a foreground run is active: queues the skill via the
+        # system/queue/ intent contract — runner pool executes concurrently.
+        # Streaming hero stays focused on the foreground run; queued runs
+        # land as new system/runs/<uuid>.md files when complete.
+        def _queue_skill(skill: dict):
+            template = skill.get("prompt_template", "")
+            if "{input}" in template:
+                st.toast(
+                    f"{skill['label']} needs input — wait for current run to finish",
+                    icon="⚠",
                 )
-                # Chunk into rows of _cols_per_row
-                for row_start in range(0, len(group_list), _cols_per_row):
-                    row = group_list[row_start:row_start + _cols_per_row]
-                    cols = st.columns(_cols_per_row, gap="small")
-                    for i, skill in enumerate(row):
-                        with cols[i]:
-                            label = skill["label"]
-                            desc = skill["description"]
-                            key = f"chip_{category}_{label}"
-                            if skill.get("disabled"):
-                                st.button(
-                                    label,
-                                    key=key,
-                                    disabled=True,
-                                    use_container_width=True,
-                                    help=desc,
-                                )
-                            elif skill.get("trigger"):
-                                st.button(
-                                    label,
-                                    key=key,
-                                    use_container_width=True,
-                                    help=desc,
-                                    on_click=_fire_trigger,
-                                    args=(skill,),
-                                )
-                            else:
-                                st.button(
-                                    label,
-                                    key=key,
-                                    use_container_width=True,
-                                    help=desc,
-                                    on_click=_load_chip,
-                                    args=(skill["prompt_template"], label),
-                                )
-                    # Fill remaining columns with empty placeholders to keep grid aligned
-                    for _fill in range(len(row), _cols_per_row):
-                        with cols[_fill]:
-                            st.markdown("&nbsp;", unsafe_allow_html=True)
+                return
+            full_prompt = _wrap_autonomy(template) if template else ""
+            uid, _ = write_queue_intent(
+                "ad-hoc",
+                {"label": skill["label"], "prompt": full_prompt},
+            )
+            st.toast(f"queued · {skill['label']} · {uid[:8]}", icon="✓")
 
-            # Trigger run
-            if clicked:
-                st.session_state.last_label = clicked["label"]
-                st.session_state.last_prompt = clicked["prompt"]
-                start_skill_run(clicked["label"], clicked["prompt"])
-                st.rerun()
+        st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
+        if st.session_state.running:
+            st.markdown(
+                '<div class="cpt-cat chip-cat" style="display:flex;align-items:center;gap:8px">'
+                'skills · click to queue alongside current run'
+                '<span class="v2-demo-pill" style="margin-left:auto">parallel</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        _cat_rank = {c: i for i, c in enumerate(SKILL_CATEGORY_ORDER)}
+        _fallback_rank = len(SKILL_CATEGORY_ORDER)
+        skills_sorted = sorted(
+            SKILLS,
+            key=lambda s: (_cat_rank.get(s.get("category", "other"), _fallback_rank),),
+        )
+        _cols_per_row = 4
+        for category, group in groupby(skills_sorted, key=lambda s: s.get("category", "other")):
+            group_list = list(group)
+            st.markdown(
+                f'<div class="cpt-cat chip-cat">{html_escape(category)}</div>',
+                unsafe_allow_html=True,
+            )
+            for row_start in range(0, len(group_list), _cols_per_row):
+                row = group_list[row_start:row_start + _cols_per_row]
+                cols = st.columns(_cols_per_row, gap="small")
+                for i, skill in enumerate(row):
+                    with cols[i]:
+                        label = skill["label"]
+                        desc = skill["description"]
+                        key = f"chip_{category}_{label}"
+                        if skill.get("disabled"):
+                            st.button(label, key=key, disabled=True,
+                                      use_container_width=True, help=desc)
+                        elif skill.get("trigger"):
+                            st.button(label, key=key, use_container_width=True,
+                                      help=desc, on_click=_fire_trigger, args=(skill,))
+                        elif st.session_state.running:
+                            # Foreground run active → chips queue via runner
+                            st.button(label, key=key, use_container_width=True,
+                                      help=f"queue · {desc}",
+                                      on_click=_queue_skill, args=(skill,))
+                        else:
+                            st.button(label, key=key, use_container_width=True,
+                                      help=desc, on_click=_load_chip,
+                                      args=(skill["prompt_template"], label))
+                for _fill in range(len(row), _cols_per_row):
+                    with cols[_fill]:
+                        st.markdown("&nbsp;", unsafe_allow_html=True)
+
+        # Trigger foreground run from form submit
+        if clicked:
+            st.session_state.last_label = clicked["label"]
+            st.session_state.last_prompt = clicked["prompt"]
+            start_skill_run(clicked["label"], clicked["prompt"])
+            st.rerun()
 
 
 # ── v2 audience tab — Latest Upload + audience row + YtWeekReview marquee ──
