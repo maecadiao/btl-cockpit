@@ -30,6 +30,7 @@ from config import (
     SESSION_META_DIR,
     CLAUDE_PLAN,
 )
+import config as _cfg  # for getattr lookups (DEMO_MODE, ENABLED_CARDS, DEMO_*)
 
 st.set_page_config(page_title="Agentic OS", page_icon="◆", layout="wide")
 
@@ -1910,6 +1911,20 @@ V2_CSS = r"""
 }
 .v2-driver-row.done .v2-driver-box { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .v2-driver-row.done .v2-driver-label { color: var(--fg-mute); text-decoration: line-through; }
+
+/* ── Demo-mode pill ───────────────────────────────────────── */
+.v2-demo-pill {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid rgba(201,100,66,0.4);
+    border-radius: 99px;
+    font-size: 0.6rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 500;
+}
 </style>
 """
 st.markdown(V2_CSS, unsafe_allow_html=True)
@@ -2711,7 +2726,9 @@ st.markdown(
     '<span class="hero-word">Agentic</span>'
     '<em>OS</em>'
     '</h1>'
-    f'<div class="caption-mono title-crumb">vault · {VAULT_PATH.name} · plan · {CLAUDE_PLAN} · permission · {PERMISSION_MODE}</div>'
+    f'<div class="caption-mono title-crumb">vault · {VAULT_PATH.name} · plan · {CLAUDE_PLAN} · permission · {PERMISSION_MODE}'
+    f'{"&nbsp;&nbsp;<span class=\"v2-demo-pill\">demo mode</span>" if getattr(_cfg, "DEMO_MODE", False) else ""}'
+    f'</div>'
     '</div>',
     unsafe_allow_html=True,
 )
@@ -2768,7 +2785,6 @@ metrics = calc_metrics()
 
 # Optional demo override — only active if config.py (local, gitignored) sets DEMO_MODE = True.
 # Harmless no-op when DEMO_MODE is absent or False.
-import config as _cfg
 if getattr(_cfg, "DEMO_MODE", False):
     _demo = getattr(_cfg, "DEMO_USAGE", None)
     if _demo:
