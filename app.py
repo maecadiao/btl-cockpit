@@ -23,12 +23,14 @@ from config import (
     RUNS_DIR,
     DRAFTS_AWAITING,
     SKILLS,
+    SKILL_CATEGORY_ORDER,
     RUN_TIMEOUT_SEC,
     PERMISSION_MODE,
     LIMITS,
     SESSION_META_DIR,
     CLAUDE_PLAN,
 )
+import config as _cfg  # for getattr lookups (DEMO_MODE, ENABLED_CARDS, DEMO_*)
 
 st.set_page_config(page_title="Agentic OS", page_icon="◆", layout="wide")
 
@@ -1335,6 +1337,18 @@ hr.chapter::after { content: none; }
     text-decoration: none !important;
 }
 .cpt-skill.loaded { box-shadow: 0 0 0 1px var(--accent); }
+.cpt-skill.disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    border: 1px dashed var(--ring-soft);
+    box-shadow: none;
+}
+.cpt-skill.disabled:hover {
+    box-shadow: none;
+    border-color: var(--ring-soft);
+}
+.cpt-skill.disabled .cpt-skill-name { color: var(--fg-mute); }
+.cpt-skill.disabled:hover .cpt-skill-name { color: var(--fg-mute); }
 .cpt-skill-name {
     color: var(--fg);
     font-size: 0.72rem;
@@ -1403,6 +1417,56 @@ BOOT_ANIMATION_CSS = """
 .mcp-strip {
     animation: boot-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.95s both;
 }
+
+/* ── v2 card boot sequence ──
+   One soft-rise keyframe reused across every card, staggered by delay.
+   TokenBurn gets a "drop-from-100" motion: bar shrinks from 100% to
+   target, counter ticks down from 100 to target via CSS @property. */
+@keyframes boot-rise-soft {
+    0%   { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes boot-fill-shrink {
+    0%   { width: 100%; }
+    100% { width: var(--tb-target); }
+}
+@keyframes boot-endpoint-slide {
+    0%   { left: 100%; }
+    100% { left: var(--tb-target); }
+}
+@keyframes boot-comet-slide {
+    0%   { left: calc(100% - 80px); width: 80px; }
+    100% { left: max(0px, calc(var(--tb-target) - 80px)); width: min(80px, var(--tb-target)); }
+}
+@keyframes boot-pct-fade-in {
+    0%   { opacity: 0; transform: scale(0.88); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* Shared smooth deceleration curve — expo ease-out, no overshoot.
+   Counter-tick animation was removed because Streamlit reruns drop
+   BOOT_ANIMATION_CSS (gated by _boot_animated session flag), which
+   left the CSS @property + counter() trick blank on rerun. Pct text
+   now renders as static int + just fades in alongside the bar. */
+.v2-tb-wrap     { animation: boot-rise-soft       0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
+.v2-tb-fill     { animation: boot-fill-shrink     1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
+.v2-tb-endpoint { animation: boot-endpoint-slide  1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
+.v2-tb-comet    { animation: boot-comet-slide     1.80s cubic-bezier(0.16, 1, 0.30, 1) 0.45s both; }
+.v2-tb-pct-num  { animation: boot-pct-fade-in     0.80s cubic-bezier(0.16, 1, 0.30, 1) 1.10s both; }
+
+/* Audience row + Latest Upload + marquees + panels — cascading rise */
+.v2-latest                { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both; }
+.v2-audience-card         { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.35s both; }
+[data-testid="column"]:nth-of-type(1) .v2-audience-card { animation-delay: 0.30s; }
+[data-testid="column"]:nth-of-type(2) .v2-audience-card { animation-delay: 0.36s; }
+[data-testid="column"]:nth-of-type(3) .v2-audience-card { animation-delay: 0.42s; }
+[data-testid="column"]:nth-of-type(4) .v2-audience-card { animation-delay: 0.48s; }
+.v2-ytr-card              { animation: boot-rise-soft 0.60s cubic-bezier(0.22, 1, 0.36, 1) 0.40s both; }
+.v2-mb-grid               { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both; }
+.v2-mb-coverage           { animation: boot-rise-soft 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.20s both; }
+.v2-sched-panel           { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both; }
+.v2-thru-panel            { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.55s both; }
 </style>
 """
 
@@ -1417,6 +1481,902 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown(PREMIUM_CSS, unsafe_allow_html=True)
+
+# ───────────────────────────────────────────────────────────────
+# V2 cockpit-port CSS — Latest Upload, audience cards, TokenBurn,
+# YtWeekReview, MorningBrief, Schedule + Daily Drivers.
+# Injected after PREMIUM_CSS so it cascades on top of legacy rules.
+# ───────────────────────────────────────────────────────────────
+V2_CSS = r"""
+<style>
+:root {
+    /* Mirror Obsidian cockpit's token names (cc-* aliases). Keep legacy var() refs working. */
+    --cc-ring:        rgba(250, 249, 245, 0.08);
+    --cc-ring-strong: rgba(250, 249, 245, 0.14);
+    --cc-fg-0:        #faf9f5;
+    --cc-fg-1:        #c6c5be;
+    --cc-fg-2:        #87867f;
+    --cc-accent:      #c96442;
+    --cc-accent-soft: rgba(201, 100, 66, 0.18);
+    --cc-accent-bg:   rgba(201, 100, 66, 0.10);
+
+    /* Platform tones — kept saturated but with terracotta-led mix */
+    --card-tone-youtube:    rgba(255, 51, 51, 0.10);
+    --card-tone-youtube-bd: rgba(255, 51, 51, 0.32);
+    --card-tone-instagram:    rgba(225, 48, 108, 0.10);
+    --card-tone-instagram-bd: rgba(225, 48, 108, 0.32);
+    --card-tone-tiktok:    rgba(0, 240, 255, 0.08);
+    --card-tone-tiktok-bd: rgba(0, 240, 255, 0.30);
+    --card-tone-claude:    rgba(201, 100, 66, 0.10);
+    --card-tone-claude-bd: rgba(201, 100, 66, 0.36);
+}
+
+/* All v2 cards use tabular numerics so values lock to a grid */
+.v2-latest, .v2-audience-card, .v2-tb-wrap, .v2-ytr-card,
+.v2-mb-tile, .v2-panel, .v2-sched-row, .v2-driver-row {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Streamlit column gap override — tighter packing, mirror cockpit's 10-12px gutters */
+[data-testid="stHorizontalBlock"] > [data-testid="column"] {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+}
+
+/* Terracotta atmosphere — visible crosshatch + grid + radial halos */
+.stApp {
+    background:
+        /* primary 45° crosshatch */
+        repeating-linear-gradient(
+            45deg,
+            rgba(219, 116, 70, 0.070) 0,
+            rgba(219, 116, 70, 0.070) 1px,
+            transparent 1px,
+            transparent 16px
+        ),
+        /* counter-hatch at -45° */
+        repeating-linear-gradient(
+            -45deg,
+            rgba(219, 116, 70, 0.045) 0,
+            rgba(219, 116, 70, 0.045) 1px,
+            transparent 1px,
+            transparent 16px
+        ),
+        /* horizontal scanlines */
+        repeating-linear-gradient(
+            0deg,
+            rgba(255, 138, 92, 0.018) 0,
+            rgba(255, 138, 92, 0.018) 1px,
+            transparent 1px,
+            transparent 4px
+        ),
+        /* top halo behind header */
+        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(219, 116, 70, 0.13) 0%, transparent 65%),
+        /* bottom-left ambient warmth */
+        radial-gradient(circle at 0% 100%, rgba(201, 100, 66, 0.10) 0%, transparent 50%),
+        /* bottom-right ambient warmth */
+        radial-gradient(circle at 100% 100%, rgba(219, 116, 70, 0.09) 0%, transparent 50%),
+        var(--bg) !important;
+    background-attachment: fixed !important;
+}
+/* Card backgrounds opaque-ish so the texture doesn't bleed through */
+.v2-latest, .v2-audience-card, .v2-tb-wrap, .v2-ytr-card,
+.v2-mb-tile, .v2-panel, .v2-perf-card {
+    backdrop-filter: blur(2px);
+}
+
+/* ── Latest Upload card ───────────────────────────────────── */
+.v2-latest {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--cc-ring);
+    border-radius: 3px;
+    padding: 12px 16px 12px 18px;
+    margin: 6px 0 10px 0;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.v2-latest:hover {
+    border-color: rgba(201, 100, 66, 0.45);
+    box-shadow:
+        inset 0 0 0 1px rgba(201, 100, 66, 0.16),
+        0 0 14px -2px rgba(201, 100, 66, 0.18);
+}
+.v2-latest::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--cc-accent) 0%, rgba(201,100,66,0.18) 100%);
+}
+.v2-latest::after {
+    content: "▶";
+    position: absolute;
+    right: 14px;
+    bottom: 6px;
+    font-size: 3.2rem;
+    line-height: 1;
+    color: var(--cc-accent);
+    opacity: 0.07;
+    pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+}
+.v2-latest-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cc-fg-2);
+    margin-bottom: 4px;
+}
+.v2-latest-head .v2-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 0 2px rgba(143, 185, 122, 0.18), 0 0 8px rgba(143, 185, 122, 0.55);
+}
+.v2-latest-head .v2-dot.mock  { background: var(--warn);   box-shadow: 0 0 0 2px rgba(217, 165, 102, 0.18), 0 0 8px rgba(217, 165, 102, 0.55); }
+.v2-latest-head .v2-dot.err   { background: var(--danger); box-shadow: 0 0 0 2px rgba(181, 51, 51, 0.20),   0 0 8px rgba(181, 51, 51, 0.55); }
+.v2-latest-head .v2-dot.stale { background: var(--cc-fg-2); box-shadow: 0 0 0 2px rgba(135, 134, 127, 0.18); }
+.v2-latest-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    color: var(--cc-fg-0);
+    line-height: 1.3;
+    margin: 2px 0 6px 0;
+    font-weight: 500;
+    max-width: 78%;
+}
+.v2-latest-title a { color: inherit; text-decoration: none; border-bottom: 1px dotted transparent; }
+.v2-latest-title a:hover { border-bottom-color: var(--cc-accent); color: var(--cc-accent); }
+.v2-latest-stats {
+    display: flex;
+    gap: 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--cc-fg-1);
+}
+.v2-latest-stats .v2-stat-val { color: var(--cc-fg-0); font-weight: 500; }
+.v2-latest-stats .v2-stat-lbl { color: var(--cc-fg-2); margin-left: 4px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; }
+
+/* ── Audience metric cards ───────────────────────────────── */
+.v2-audience-card {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--cc-ring);
+    border-radius: 3px;
+    padding: 11px 14px;
+    overflow: hidden;
+    min-height: 76px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.v2-audience-card:hover {
+    border-color: rgba(201, 100, 66, 0.45);
+    box-shadow:
+        inset 0 0 0 1px rgba(201, 100, 66, 0.16),
+        0 0 14px -2px rgba(201, 100, 66, 0.18);
+    transform: translateY(-1px);
+}
+.v2-audience-card[data-tone="youtube"]   { background: linear-gradient(135deg, var(--card-tone-youtube) 0%, var(--bg-card) 70%); border-color: var(--card-tone-youtube-bd); }
+.v2-audience-card[data-tone="instagram"] { background: linear-gradient(135deg, var(--card-tone-instagram) 0%, var(--bg-card) 70%); border-color: var(--card-tone-instagram-bd); }
+.v2-audience-card[data-tone="tiktok"]    { background: linear-gradient(135deg, var(--card-tone-tiktok) 0%, var(--bg-card) 70%); border-color: var(--card-tone-tiktok-bd); }
+.v2-audience-card[data-tone="claude"]    { background: linear-gradient(135deg, var(--card-tone-claude) 0%, var(--bg-card) 70%); border-color: var(--card-tone-claude-bd); }
+.v2-audience-watermark {
+    position: absolute;
+    right: -6px;
+    bottom: -16px;
+    font-size: 3.4rem;
+    line-height: 1;
+    opacity: 0.085;
+    pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+}
+.v2-audience-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cc-fg-2);
+    margin-bottom: 4px;
+}
+.v2-audience-head .v2-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 0 2px rgba(143, 185, 122, 0.18), 0 0 8px rgba(143, 185, 122, 0.55);
+}
+.v2-audience-head .v2-dot.mock  { background: var(--warn);   box-shadow: 0 0 0 2px rgba(217, 165, 102, 0.18), 0 0 8px rgba(217, 165, 102, 0.55); }
+.v2-audience-head .v2-dot.err   { background: var(--danger); box-shadow: 0 0 0 2px rgba(181, 51, 51, 0.20),   0 0 8px rgba(181, 51, 51, 0.55); }
+.v2-audience-head .v2-dot.stale { background: var(--cc-fg-2); box-shadow: 0 0 0 2px rgba(135, 134, 127, 0.18); }
+.v2-audience-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 26px;
+    line-height: 1;
+    color: var(--cc-fg-0);
+    font-weight: 600;
+    margin: 4px 0 4px 0;
+    letter-spacing: -0.01em;
+}
+.v2-audience-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--cc-fg-2);
+    letter-spacing: 0.05em;
+    text-transform: lowercase;
+}
+
+/* ── TokenBurn marquee (mirrors Obsidian cockpit) ───────────── */
+.v2-tb-wrap {
+    --tb-tone: 219, 116, 70;
+    --tb-fill-stop-mid: #e07a48;
+    --tb-fill-stop-end: #ff9a5c;
+    position: relative;
+    background:
+        linear-gradient(180deg, rgba(219, 116, 70, 0.14), rgba(219, 116, 70, 0.04) 60%, transparent 100%),
+        var(--bg-card);
+    border: 1px solid rgba(219, 116, 70, 0.40);
+    border-radius: 3px;
+    padding: 16px 22px 14px;
+    margin: 6px 0 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+    box-shadow: 0 0 24px -10px rgba(219, 116, 70, 0.40);
+}
+.v2-tb-wrap::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(201, 100, 66, 0.65) 30%, rgba(201, 100, 66, 0.65) 70%, transparent);
+}
+.v2-tb-wrap.warn { border-color: rgba(217, 165, 102, 0.4); --tb-fill-stop-mid: #e6963c; --tb-fill-stop-end: #ffb05c; }
+.v2-tb-wrap.critical {
+    border-color: rgba(240, 80, 50, 0.45);
+    --tb-fill-stop-mid: #f04f3a; --tb-fill-stop-end: #ff7a4a;
+    background:
+        linear-gradient(180deg, rgba(240, 80, 50, 0.12), rgba(240, 80, 50, 0.02) 60%, transparent 100%),
+        var(--bg-card);
+}
+.v2-tb-wrap.critical .v2-tb-pct-num { color: #f04f3a; text-shadow: 0 0 16px rgba(240, 80, 50, 0.5); animation: v2-tb-throb 1.2s ease-in-out infinite; }
+@keyframes v2-tb-throb { 0%,100%{opacity:1} 50%{opacity:0.7} }
+
+/* HUD corner brackets — 4 explicit spans */
+.v2-tb-corner {
+    position: absolute;
+    width: 12px; height: 12px;
+    border-color: var(--cc-accent);
+    border-style: solid;
+    border-width: 0;
+    opacity: 0.7;
+    pointer-events: none;
+}
+.v2-tb-corner.tl { top: 5px; left: 5px;     border-top-width: 1.5px; border-left-width: 1.5px; }
+.v2-tb-corner.tr { top: 5px; right: 5px;    border-top-width: 1.5px; border-right-width: 1.5px; }
+.v2-tb-corner.bl { bottom: 5px; left: 5px;  border-bottom-width: 1.5px; border-left-width: 1.5px; }
+.v2-tb-corner.br { bottom: 5px; right: 5px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.v2-tb-wrap.critical .v2-tb-corner { border-color: #f04f3a; animation: v2-tb-corner-blink 1.2s ease-in-out infinite; }
+@keyframes v2-tb-corner-blink { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+.v2-tb-head {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+}
+.v2-tb-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--cc-accent);
+    font-weight: 600;
+}
+.v2-tb-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--cc-accent);
+}
+.v2-tb-live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cc-accent);
+    box-shadow: 0 0 6px rgba(201, 100, 66, 0.8);
+    animation: v2-tb-pulse 1.6s ease-in-out infinite;
+}
+@keyframes v2-tb-pulse {
+    0%,100% { opacity: 0.35; transform: scale(0.85); }
+    50%     { opacity: 1;    transform: scale(1.15); }
+}
+.v2-tb-meta {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--cc-fg-2);
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* meter row: pct | bar | counts */
+.v2-tb-meter {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 22px;
+    align-items: start;
+}
+.v2-tb-pct {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    color: #e07a48;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 18px rgba(255, 138, 92, 0.55);
+    font-family: 'JetBrains Mono', monospace;
+    /* Nudge pct up so its baseline sits on the bar's vertical center
+       instead of the bar+ticks group center. 64px line aligned to 38px bar. */
+    margin-top: -10px;
+}
+.v2-tb-counts { align-self: center; }
+.v2-tb-pct-num {
+    font-size: 64px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    /* Lock width to 3 digits + right-align so the counter ticking
+       100→10→9→3 doesn't reflow neighbouring elements at the tail
+       end of the animation. tabular-nums already inherited from
+       .v2-tb-pct ensures fixed-width glyphs. */
+    display: inline-block;
+    min-width: 1.85em;
+    text-align: right;
+}
+.v2-tb-pct-unit {
+    font-size: 22px;
+    color: rgba(224, 122, 72, 0.75);
+    font-weight: 500;
+}
+.v2-tb-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+.v2-tb-track {
+    position: relative;
+    height: 38px;
+    border-radius: 2px;
+    overflow: hidden;
+    isolation: isolate;
+    background:
+        repeating-linear-gradient(
+            135deg,
+            rgba(250, 249, 245, 0.025) 0 6px,
+            transparent 6px 12px
+        ),
+        linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.18)),
+        var(--bg);
+    border: 1px solid rgba(250, 249, 245, 0.06);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+    margin-top: 0;
+}
+.v2-tb-track::after {
+    content: "";
+    position: absolute;
+    inset: 4px 0;
+    border-radius: 2px;
+    background: repeating-linear-gradient(
+        90deg,
+        transparent 0 calc(5% - 1px),
+        rgba(250, 249, 245, 0.12) calc(5% - 1px) 5%
+    );
+    pointer-events: none;
+    z-index: 1;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 25%, black 75%, transparent 100%);
+            mask-image: linear-gradient(180deg, transparent 0%, black 25%, black 75%, transparent 100%);
+}
+.v2-tb-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    border-radius: 2px 0 0 2px;
+    background:
+        linear-gradient(180deg, rgba(255, 211, 181, 0.28) 0%, transparent 40%),
+        linear-gradient(90deg, rgba(var(--tb-tone), 0.70) 0%, var(--tb-fill-stop-mid) 75%, var(--tb-fill-stop-end) 100%);
+    box-shadow:
+        inset 0 0 14px rgba(255, 154, 92, 0.50),
+        0 0 22px rgba(var(--tb-tone), 0.50);
+    transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    z-index: 2;
+}
+.v2-tb-proj {
+    position: absolute;
+    top: 0; bottom: 0;
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(201, 100, 66, 0.18) 0 6px,
+        transparent 6px 12px
+    );
+    border-top: 1px solid rgba(201, 100, 66, 0.22);
+    border-bottom: 1px solid rgba(201, 100, 66, 0.22);
+    pointer-events: none;
+    transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1), left 600ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.v2-tb-scan {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 50%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.06) 40%,
+        rgba(255, 255, 255, 0.12) 50%,
+        rgba(255, 255, 255, 0.06) 60%,
+        transparent 100%
+    );
+    animation: v2-scan 4s linear infinite;
+    pointer-events: none;
+    z-index: 3;
+}
+@keyframes v2-scan {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(220%); }
+}
+.v2-tb-comet {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 80px;
+    max-width: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 211, 181, 0.05) 30%,
+        rgba(255, 211, 181, 0.16) 60%,
+        rgba(255, 240, 220, 0.35) 90%,
+        rgba(255, 245, 230, 0.55) 100%
+    );
+    pointer-events: none;
+    mix-blend-mode: screen;
+    z-index: 2;
+}
+.v2-tb-endpoint {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: linear-gradient(180deg, rgba(255, 211, 181, 0.8), var(--cc-accent) 40%, var(--cc-accent) 60%, rgba(255, 211, 181, 0.8));
+    box-shadow: 0 0 8px rgba(255, 138, 92, 0.6);
+    pointer-events: none;
+    z-index: 4;
+}
+.v2-tb-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--cc-fg-2);
+    margin-top: 4px;
+    letter-spacing: 0.08em;
+}
+.v2-tb-counts {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--cc-fg-1);
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.v2-tb-counts .v2-tb-used { color: var(--cc-fg-0); font-size: 14px; font-weight: 500; }
+.v2-tb-counts .v2-tb-proj-label { color: var(--cc-accent); font-size: 10px; letter-spacing: 0.06em; }
+
+/* ── YtWeekReview card ────────────────────────────────────── */
+.v2-ytr-card {
+    background: var(--bg-card);
+    border: 1px solid var(--cc-ring);
+    border-radius: 3px;
+    padding: 14px 18px 14px 18px;
+    margin: 6px 0 10px 0;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.v2-ytr-card:hover {
+    border-color: rgba(201, 100, 66, 0.32);
+    box-shadow: 0 0 18px -8px rgba(201, 100, 66, 0.30);
+}
+.v2-ytr-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.v2-ytr-head .v2-ytr-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cc-fg-2);
+}
+.v2-ytr-head .v2-ytr-actions {
+    display: flex;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+}
+.v2-ytr-head .v2-ytr-actions a {
+    color: var(--cc-accent);
+    text-decoration: none;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.v2-ytr-head .v2-ytr-actions a:hover { text-decoration: underline; }
+.v2-ytr-tldr {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--cc-fg-1);
+    line-height: 1.5;
+    margin: 4px 0 8px 0;
+    padding-left: 16px;
+}
+.v2-ytr-tldr li { margin: 3px 0; }
+.v2-chip-row {
+    display: flex; gap: 6px;
+    margin: 6px 0;
+    flex-wrap: wrap;
+}
+.v2-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border: 1px solid var(--cc-ring);
+    border-radius: 99px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--cc-fg-2);
+    background: var(--bg-elev);
+}
+.v2-chip.hit       { color: var(--good); border-color: rgba(143,185,122,0.4); }
+.v2-chip.steady    { color: var(--cc-fg-1); }
+.v2-chip.climbing  { color: var(--warn); border-color: rgba(217,165,102,0.4); }
+.v2-chip.miss      { color: var(--cc-accent); border-color: rgba(201,100,66,0.4); }
+.v2-ytr-perfs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+}
+.v2-perf-card {
+    border: 1px solid var(--cc-ring);
+    border-radius: 3px;
+    padding: 9px 11px;
+    background: var(--bg-elev);
+}
+.v2-perf-card.top { border-left: 3px solid var(--good); }
+.v2-perf-card.under { border-left: 3px solid var(--cc-accent); }
+.v2-perf-card .v2-perf-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cc-fg-2);
+}
+.v2-perf-card .v2-perf-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--cc-fg-0);
+    margin: 3px 0;
+    line-height: 1.35;
+}
+
+/* ── MorningBrief 2x2 grid ───────────────────────────────── */
+.v2-mb-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 6px 0 10px 0;
+}
+.v2-mb-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--cc-ring);
+    border-radius: 3px;
+    padding: 11px 14px;
+    min-height: 120px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.v2-mb-tile:hover {
+    border-color: rgba(201, 100, 66, 0.32);
+    box-shadow: 0 0 14px -8px rgba(201, 100, 66, 0.30);
+}
+.v2-mb-tile .v2-mb-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cc-fg-2);
+    margin-bottom: 6px;
+}
+.v2-mb-tile ul {
+    margin: 0;
+    padding-left: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--cc-fg-0);
+    line-height: 1.5;
+}
+.v2-mb-tile li { margin: 3px 0; }
+.v2-mb-coverage {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--cc-fg-2);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.v2-mb-coverage span { padding: 3px 9px; border: 1px solid var(--cc-ring); border-radius: 99px; }
+
+/* ── Schedule + Daily Drivers ─────────────────────────────── */
+.v2-panel {
+    background: var(--bg-card);
+    border: 1px solid rgba(201, 100, 66, 0.28);
+    border-radius: 3px;
+    padding: 14px 18px 16px;
+    box-shadow: 0 0 18px -8px rgba(201, 100, 66, 0.35);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.v2-panel:hover {
+    border-color: rgba(201, 100, 66, 0.45);
+    box-shadow: 0 0 22px -8px rgba(201, 100, 66, 0.50);
+}
+.v2-panel-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cc-fg-2);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.v2-sched-list {
+    column-count: 2;
+    column-gap: 24px;
+    column-rule: 1px dashed var(--cc-ring);
+}
+.v2-sched-row {
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--cc-ring);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    break-inside: avoid;
+}
+.v2-sched-row:last-child { border-bottom: none; }
+.v2-sched-row .v2-sched-time { color: var(--cc-accent); font-weight: 500; }
+.v2-sched-row .v2-sched-label { color: var(--cc-fg-0); }
+.v2-driver-row {
+    display: grid;
+    grid-template-columns: 16px 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--cc-fg-0);
+}
+.v2-driver-row .v2-driver-box {
+    width: 14px; height: 14px;
+    border: 1px solid var(--cc-ring-strong);
+    border-radius: 2px;
+    display: inline-block;
+    text-align: center;
+    line-height: 12px;
+    font-size: 11px;
+    color: var(--cc-accent);
+}
+.v2-driver-row.done .v2-driver-box { background: var(--cc-accent); color: var(--bg); border-color: var(--cc-accent); }
+.v2-driver-row.done .v2-driver-label { color: var(--cc-fg-2); text-decoration: line-through; }
+
+/* ── Throughput + Schedule panels — matched heights ─────── */
+.v2-sched-panel, .v2-thru-panel {
+    min-height: 240px;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 20px 14px;
+}
+.v2-sched-panel .v2-panel-head,
+.v2-thru-panel .v2-panel-head {
+    margin-bottom: 8px;
+}
+.v2-sched-panel > .v2-sched-list,
+.v2-sched-panel > .v2-sched-list-single { flex: 1 1 auto; }
+.v2-thru-panel .v2-panel-head {
+    justify-content: space-between;
+}
+.v2-thru-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--cc-fg-2);
+    text-transform: none;
+    font-variant-numeric: tabular-nums;
+}
+.v2-thru-svg {
+    margin: 6px -6px 0 -6px;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: stretch;
+}
+.v2-thru-svg .activity-chart-wrap { margin: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+.v2-thru-svg .activity-svg { height: 160px; width: 100%; flex: 1 1 auto; }
+.v2-thru-svg .activity-axis {
+    font-size: 9px;
+    color: var(--cc-fg-2);
+    margin-top: 4px;
+    padding: 0 4px;
+}
+
+/* Native st.checkbox style override for Daily Drivers — write-back enabled. */
+.v2-panel-drivers-head {
+    /* the panel-head card sits directly above the checkbox stack so they read as one block */
+    margin-bottom: 6px !important;
+    padding-bottom: 8px;
+}
+[data-testid="stCheckbox"] {
+    padding: 4px 0 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+[data-testid="stCheckbox"] label {
+    font-size: 12px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    color: var(--cc-fg-0) !important;
+    align-items: center !important;
+    gap: 10px !important;
+}
+[data-testid="stCheckbox"] label p {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    color: var(--cc-fg-0) !important;
+    margin: 0 !important;
+}
+[data-testid="stCheckbox"] label > div:first-child {
+    margin-right: 0 !important;
+}
+/* The square */
+[data-testid="stCheckbox"] [role="checkbox"],
+[data-testid="stCheckbox"] [data-baseweb="checkbox"] > div:first-child {
+    width: 14px !important;
+    height: 14px !important;
+    min-width: 14px !important;
+    border-radius: 2px !important;
+    border: 1px solid var(--cc-ring-strong) !important;
+    background: transparent !important;
+}
+[data-testid="stCheckbox"] [aria-checked="true"],
+[data-testid="stCheckbox"] [data-baseweb="checkbox"] > div[data-checked="true"] {
+    background: var(--cc-accent) !important;
+    border-color: var(--cc-accent) !important;
+}
+[data-testid="stCheckbox"] [aria-checked="true"] + div p,
+[data-testid="stCheckbox"]:has([aria-checked="true"]) label p {
+    color: var(--cc-fg-2) !important;
+    text-decoration: line-through;
+}
+
+/* Background queue card — shows pending / running / recently-completed runs */
+.v2-queue-card {
+    margin-bottom: 12px;
+    padding: 12px 14px 10px;
+}
+.v2-queue-card .v2-panel-head {
+    margin-bottom: 6px;
+}
+.v2-queue-row {
+    display: grid;
+    grid-template-columns: 10px 1fr 56px 42px 54px;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    border-bottom: 1px dashed var(--cc-ring);
+}
+.v2-queue-row > .v2-queue-status { text-align: right; }
+.v2-queue-row > .v2-queue-meta   { text-align: right; }
+.v2-queue-row > .v2-queue-link-slot { text-align: right; }
+.v2-queue-row:last-child { border-bottom: none; }
+.v2-queue-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--cc-fg-2);
+    box-shadow: 0 0 0 2px rgba(135, 134, 127, 0.18);
+}
+.v2-queue-dot.queued {
+    background: var(--warn);
+    box-shadow: 0 0 0 2px rgba(217, 165, 102, 0.18), 0 0 6px rgba(217, 165, 102, 0.45);
+}
+.v2-queue-dot.running {
+    background: var(--cc-accent);
+    box-shadow: 0 0 0 2px rgba(219, 116, 70, 0.22), 0 0 8px rgba(219, 116, 70, 0.65);
+    animation: v2-blink 1.4s infinite;
+}
+.v2-queue-dot.done {
+    background: var(--good);
+    box-shadow: 0 0 0 2px rgba(143, 185, 122, 0.18);
+}
+.v2-queue-dot.err {
+    background: var(--danger);
+    box-shadow: 0 0 0 2px rgba(181, 51, 51, 0.20);
+}
+.v2-queue-label {
+    color: var(--cc-fg-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.v2-queue-status {
+    color: var(--cc-fg-2);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.v2-queue-meta {
+    color: var(--cc-fg-2);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+.v2-queue-link {
+    color: var(--cc-accent);
+    text-decoration: none;
+    font-size: 11px;
+}
+.v2-queue-link:hover { text-decoration: underline; }
+
+/* Quicknav pull pill — terracotta-tinted, matches status chip footprint */
+.quicknav .qn-pull {
+    background: rgba(219, 116, 70, 0.10);
+    color: var(--cc-accent) !important;
+    border: 1px solid rgba(219, 116, 70, 0.32);
+}
+.quicknav .qn-pull:hover {
+    background: rgba(219, 116, 70, 0.22);
+    border-color: rgba(219, 116, 70, 0.55);
+    box-shadow: 0 0 10px -2px rgba(219, 116, 70, 0.45);
+}
+
+/* ── Demo-mode pill ───────────────────────────────────────── */
+.v2-demo-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--cc-accent-soft);
+    color: var(--cc-accent);
+    border: 1px solid rgba(201,100,66,0.4);
+    border-radius: 99px;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 500;
+}
+</style>
+"""
+st.markdown(V2_CSS, unsafe_allow_html=True)
 
 # Boot animations only on fresh page mount — not on every Streamlit rerun (button clicks).
 # Session state persists per tab; fresh Ctrl+R creates a new session → animation replays.
@@ -2190,7 +3150,7 @@ for k, v in defaults.items():
 
 st.markdown('<div class="cpt-header-marker"></div>', unsafe_allow_html=True)
 
-# Terminal launch via query-param (claude code pill in quicknav)
+# Quicknav query-param actions: terminal launch + metrics-pull queue
 _action_q = st.query_params.get("action")
 if _action_q == "terminal":
     try:
@@ -2198,6 +3158,13 @@ if _action_q == "terminal":
         st.toast("Terminal opened at vault.", icon="✅")
     except Exception as e:
         st.toast(f"Failed: {e}", icon="⚠️")
+    st.query_params.clear()
+elif _action_q == "pull-latest":
+    try:
+        uid, _ = write_queue_intent("metrics-pull")
+        st.toast(f"queued metrics-pull · {uid[:8]}", icon="✅")
+    except Exception as e:
+        st.toast(f"pull failed: {e}", icon="⚠️")
     st.query_params.clear()
 
 if MASCOT_IDLE_URL:
@@ -2215,7 +3182,9 @@ st.markdown(
     '<span class="hero-word">Agentic</span>'
     '<em>OS</em>'
     '</h1>'
-    f'<div class="caption-mono title-crumb">vault · {VAULT_PATH.name} · plan · {CLAUDE_PLAN} · permission · {PERMISSION_MODE}</div>'
+    f'<div class="caption-mono title-crumb">vault · {VAULT_PATH.name} · plan · {CLAUDE_PLAN} · permission · {PERMISSION_MODE}'
+    f'{"&nbsp;&nbsp;<span class=\"v2-demo-pill\">demo mode</span>" if getattr(_cfg, "DEMO_MODE", False) else ""}'
+    f'</div>'
     '</div>',
     unsafe_allow_html=True,
 )
@@ -2255,6 +3224,7 @@ st.markdown(
         <a href="{daily_note_uri}" target="_blank"><span class="qn-icon">§</span>daily note</a>
         <a href="{runs_folder_uri}" target="_blank"><span class="qn-icon">¶</span>runs folder</a>
         <a href="{drafts_folder_uri}" target="_blank"><span class="qn-icon">※</span>drafts</a>
+        <a class="qn-pull" href="?action=pull-latest" target="_self" title="Queue /metrics-pull skill"><span class="qn-icon">↻</span>pull</a>
         {_status_html}
     </div>
     """,
@@ -2269,6 +3239,13 @@ st.markdown(
 usage = calc_usage_windows()
 rate_limits = load_rate_limits()
 metrics = calc_metrics()
+
+# Optional demo override — only active if config.py (local, gitignored) sets DEMO_MODE = True.
+# Harmless no-op when DEMO_MODE is absent or False.
+if getattr(_cfg, "DEMO_MODE", False):
+    _demo = getattr(_cfg, "DEMO_USAGE", None)
+    if _demo:
+        usage = _demo
 
 
 def _gauge_class(pct: float) -> str:
@@ -2315,10 +3292,996 @@ def render_gauge(
     )
 
 
+# ═══════════════════════════════════════════════════════════
+# V2 CARD READERS + RENDERERS — Latest Upload, audience, etc.
+# ═══════════════════════════════════════════════════════════
+
+LATEST_VIDEO_JSON = VAULT_PATH / "system" / "metrics" / "latest-video.json"
+METRICS_CSV = VAULT_PATH / "system" / "metrics" / "metrics.csv"
+LAST_PULL_JSON = VAULT_PATH / "system" / "metrics" / "last-pull.json"
+
+
+def read_claude_5h_billable() -> tuple[int | None, str | None]:
+    """Latest claude_code/tokens_5h (output-only) from metrics.csv.
+
+    The /metrics-pull skill emits three claude_code rows per pull:
+    - tokens_5h      → OUTPUT tokens (the metric Anthropic actually meters
+                       for the 5h rate-limit, per pull_claude_usage.py)
+    - billable_5h    → input + output + cache_creation (informational only,
+                       NOT what shows up as the rate-limit percentage)
+    - cache_read_5h  → cache-read tokens (not metered)
+
+    Earlier version of this reader pulled billable_5h, which made TokenBurn
+    show ~75% even when claude.ai dev page showed ~4%. tokens_5h is the
+    correct field.
+
+    LIMITS["five_hour_tokens"] in config should be calibrated against your
+    plan's actual output-token cap. Anthropic does not publish the exact
+    number; community trackers report ~220K-440K for Max20x as of the
+    April 2026 policy + later doubling. Default 5M is conservative —
+    lower it if you want the % to read closer to what claude.ai shows.
+    """
+    if not METRICS_CSV.exists():
+        return None, None
+    latest_val: float | None = None
+    latest_ts: str | None = None
+    try:
+        with METRICS_CSV.open("r", encoding="utf-8") as f:
+            f.readline()  # header
+            for line in f:
+                parts = line.rstrip("\n").split(",")
+                if len(parts) < 5:
+                    continue
+                ts, source, metric, value, status = parts[:5]
+                if source != "claude_code" or metric != "tokens_5h":
+                    continue
+                if status not in ("ok", "mock"):
+                    continue
+                try:
+                    val = float(value)
+                except ValueError:
+                    continue
+                if latest_ts is None or ts > latest_ts:
+                    latest_ts = ts
+                    latest_val = val
+    except OSError:
+        return None, None
+    if latest_val is None:
+        return None, None
+    return int(latest_val), latest_ts
+
+
+def read_audience_metrics() -> dict:
+    """Return latest value per (source, metric) from metrics.csv. Falls back to DEMO_AUDIENCE."""
+    demo_on = getattr(_cfg, "DEMO_MODE", False)
+    demo = getattr(_cfg, "DEMO_AUDIENCE", None) or {}
+    # canonical keys we surface as cards
+    keys = {
+        "youtube_subs":        ("youtube",   "subscribers"),
+        "youtube_views_28d":   ("youtube",   "views_28d"),
+        "instagram_followers": ("instagram", "followers"),
+        "tiktok_followers":    ("tiktok",    "followers"),
+    }
+    if demo_on:
+        return {k: dict(demo[k]) for k in keys if k in demo}
+
+    out: dict[str, dict] = {}
+    try:
+        if METRICS_CSV.exists():
+            # last-wins per (source, metric) pair — file is append-only
+            latest: dict[tuple[str, str], dict] = {}
+            with METRICS_CSV.open("r", encoding="utf-8") as f:
+                header = f.readline()
+                for line in f:
+                    parts = line.rstrip("\n").split(",")
+                    if len(parts) < 5:
+                        continue
+                    ts, source, metric, value, status = parts[:5]
+                    try:
+                        val = float(value)
+                    except ValueError:
+                        continue
+                    latest[(source, metric)] = {"value": val, "ts": ts, "status": status}
+            for key, pair in keys.items():
+                if pair in latest:
+                    out[key] = latest[pair]
+    except OSError:
+        pass
+
+    # fill any missing with demo (so a partial-vault deployment still renders)
+    for k in keys:
+        if k not in out and k in demo:
+            out[k] = dict(demo[k])
+    return out
+
+
+def _parse_iso(ts: str) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def read_latest_video() -> dict | None:
+    """Read system/metrics/latest-video.json. Fallback to DEMO_LATEST_VIDEO when DEMO_MODE or missing."""
+    demo_on = getattr(_cfg, "DEMO_MODE", False)
+    demo = getattr(_cfg, "DEMO_LATEST_VIDEO", None)
+    if demo_on and demo:
+        return dict(demo)
+    try:
+        if LATEST_VIDEO_JSON.exists():
+            return json.loads(LATEST_VIDEO_JSON.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        pass
+    return dict(demo) if demo else None
+
+
+def render_latest_upload(video: dict | None) -> str:
+    if not video:
+        return ""
+    status = (video.get("status") or "ok").lower()
+    title = video.get("title") or "(untitled)"
+    url = video.get("url") or "#"
+    views = int(video.get("views") or 0)
+    likes = int(video.get("likes") or 0)
+    comments = int(video.get("comments") or 0)
+    pub_dt = _parse_iso(video.get("published_at") or "")
+    ts_dt = _parse_iso(video.get("ts") or "")
+    age_html = ""
+    if pub_dt:
+        try:
+            age_sec = int((datetime.now(pub_dt.tzinfo) - pub_dt).total_seconds())
+            age_html = f"· uploaded {fmt_ago(max(0, age_sec))} ago"
+        except Exception:
+            pass
+    pull_html = ""
+    if ts_dt:
+        try:
+            pull_age = int((datetime.now(ts_dt.tzinfo) - ts_dt).total_seconds())
+            pull_html = f"· pulled {fmt_ago(max(0, pull_age))} ago"
+        except Exception:
+            pass
+
+    dot_class = "mock" if status == "mock" else ("err" if status not in ("ok", "mock") else "")
+    safe_title = html_escape(title)
+    return (
+        '<div class="v2-latest">'
+        '<div class="v2-latest-head">'
+        f'<span class="v2-dot {dot_class}"></span>'
+        f'<span>latest upload · youtube</span>'
+        f'<span style="margin-left:auto;color:var(--fg-mute)">{age_html} {pull_html}</span>'
+        '</div>'
+        f'<div class="v2-latest-title"><a href="{url}" target="_blank">{safe_title}</a></div>'
+        '<div class="v2-latest-stats">'
+        f'<span><span class="v2-stat-val">{fmt_tokens(views)}</span><span class="v2-stat-lbl">views</span></span>'
+        f'<span><span class="v2-stat-val">{fmt_tokens(likes)}</span><span class="v2-stat-lbl">likes</span></span>'
+        f'<span><span class="v2-stat-val">{fmt_tokens(comments)}</span><span class="v2-stat-lbl">comments</span></span>'
+        '</div>'
+        '</div>'
+    )
+
+
+def _status_to_dot(status: str | None, ts: str | None) -> str:
+    s = (status or "").lower()
+    if s == "ok":
+        # treat as stale if >36h old
+        dt = _parse_iso(ts or "")
+        if dt:
+            try:
+                age_h = (datetime.now(dt.tzinfo) - dt).total_seconds() / 3600
+                if age_h > 36:
+                    return "stale"
+            except Exception:
+                pass
+        return ""
+    if s in ("mock", ""):
+        return "mock"
+    if s == "stale":
+        return "stale"
+    return "err"
+
+
+def render_audience_card(label: str, tone: str, watermark: str, metric: dict | None, suffix: str = "") -> str:
+    if not metric:
+        # render empty shell rather than crash
+        return (
+            f'<div class="v2-audience-card" data-tone="{tone}">'
+            f'<div class="v2-audience-watermark">{html_escape(watermark)}</div>'
+            f'<div class="v2-audience-head"><span class="v2-dot stale"></span>{html_escape(label)}</div>'
+            '<div class="v2-audience-value">—</div>'
+            '<div class="v2-audience-sub">no data</div>'
+            '</div>'
+        )
+    value = metric.get("value") or 0
+    ts = metric.get("ts")
+    status = metric.get("status")
+    dot = _status_to_dot(status, ts)
+    ago_html = ""
+    dt = _parse_iso(ts or "")
+    if dt:
+        try:
+            age = int((datetime.now(dt.tzinfo) - dt).total_seconds())
+            ago_html = f"updated {fmt_ago(max(0, age))} ago"
+        except Exception:
+            pass
+    val_html = fmt_tokens(int(value)) if value >= 1000 else f"{int(value):,}"
+    if suffix:
+        val_html = f"{val_html}<span style='font-size:0.7rem;color:var(--fg-mute);margin-left:0.3rem'>{suffix}</span>"
+    return (
+        f'<div class="v2-audience-card" data-tone="{tone}">'
+        f'<div class="v2-audience-watermark">{html_escape(watermark)}</div>'
+        f'<div class="v2-audience-head"><span class="v2-dot {dot}"></span>{html_escape(label)}</div>'
+        f'<div class="v2-audience-value">{val_html}</div>'
+        f'<div class="v2-audience-sub">{ago_html}</div>'
+        '</div>'
+    )
+
+
+def render_audience_row() -> None:
+    aud = read_audience_metrics()
+    cols = st.columns(4, gap="small")
+    cards = [
+        ("youtube subs",  "youtube",   "YT",  "youtube_subs",        ""),
+        ("youtube views · 28d", "youtube", "▶",  "youtube_views_28d",   ""),
+        ("instagram",     "instagram", "IG",  "instagram_followers", ""),
+        ("tiktok",        "tiktok",    "TT",  "tiktok_followers",    ""),
+    ]
+    for col, (label, tone, mark, key, suf) in zip(cols, cards):
+        with col:
+            st.markdown(
+                render_audience_card(label, tone, mark, aud.get(key), suf),
+                unsafe_allow_html=True,
+            )
+
+
+def read_last_pull_ts() -> str | None:
+    """Most-recent ts across sources in last-pull.json."""
+    try:
+        if not LAST_PULL_JSON.exists():
+            return None
+        data = json.loads(LAST_PULL_JSON.read_text(encoding="utf-8"))
+        latest = None
+        for src, info in (data or {}).items():
+            ts = info.get("ts") if isinstance(info, dict) else None
+            if ts and (latest is None or ts > latest):
+                latest = ts
+        return latest
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def render_tokenburn_meter(used: int, budget: int, reset_at: float | None, last_pull_ts: str | None) -> str:
+    """5h window TokenBurn marquee. Returns HTML string mirroring Obsidian cockpit component."""
+    pct = min(100.0, (used / budget * 100.0) if budget else 0.0)
+
+    # Projection: linear extrapolation of current burn to end-of-window.
+    proj_pct = pct
+    if reset_at:
+        try:
+            reset_in_sec = max(0, int(reset_at - time.time()))
+            window_sec = 5 * 3600
+            elapsed_sec = max(60, window_sec - reset_in_sec)
+            burn_per_sec = used / elapsed_sec if elapsed_sec else 0
+            projected_total = used + (burn_per_sec * reset_in_sec)
+            if budget:
+                proj_pct = min(100.0, projected_total / budget * 100.0)
+        except Exception:
+            pass
+
+    tone_class = "critical" if pct >= 90 else ("warn" if pct >= 70 else "")
+
+    pull_age_html = "—"
+    pull_dt = _parse_iso(last_pull_ts or "")
+    if pull_dt:
+        try:
+            age = int((datetime.now(pull_dt.tzinfo) - pull_dt).total_seconds())
+            pull_age_html = f"last pull {fmt_ago(max(0, age))} ago"
+        except Exception:
+            pass
+
+    pct_int = int(round(pct))
+    proj_left = pct
+    proj_width = max(0.0, proj_pct - pct)
+
+    used_h = fmt_tokens(int(used))
+    budget_h = fmt_tokens(int(budget))
+    projected_total = int((proj_pct / 100.0) * budget) if budget else 0
+    projected_h = fmt_tokens(projected_total)
+
+    # Tick marks every 25% of budget — keeps scale legible.
+    ticks = []
+    for frac in (0, 0.25, 0.5, 0.75, 1.0):
+        ticks.append(fmt_tokens(int(budget * frac)) if budget else "—")
+
+    wrap_class = f"v2-tb-wrap {tone_class}".strip()
+    return (
+        f'<div class="{wrap_class}">'
+        # HUD corner brackets (4 explicit spans, animate on .critical)
+        '<span class="v2-tb-corner tl"></span>'
+        '<span class="v2-tb-corner tr"></span>'
+        '<span class="v2-tb-corner bl"></span>'
+        '<span class="v2-tb-corner br"></span>'
+        # Header
+        '<div class="v2-tb-head">'
+        '<span class="v2-tb-title">§ TOKEN BURN · 5H WINDOW</span>'
+        '<span class="v2-tb-live"><span class="v2-tb-live-dot"></span>LIVE</span>'
+        f'<span class="v2-tb-meta">{pull_age_html}</span>'
+        '</div>'
+        # Meter grid: pct | bar | counts
+        '<div class="v2-tb-meter">'
+        '<div class="v2-tb-pct">'
+        f'<span class="v2-tb-pct-num">{pct_int}</span>'
+        '<span class="v2-tb-pct-unit">%</span>'
+        '</div>'
+        '<div class="v2-tb-bar-wrap">'
+        '<div class="v2-tb-track">'
+        f'<div class="v2-tb-fill" style="--tb-target:{pct:.1f}%;width:{pct:.1f}%"></div>'
+        f'<div class="v2-tb-proj" style="left:{proj_left:.1f}%;width:{proj_width:.1f}%"></div>'
+        f'<div class="v2-tb-comet" style="--tb-target:{pct:.1f}%;left:max(0px, calc({pct:.1f}% - 80px));width:min(80px, {pct:.1f}%)"></div>'
+        f'<div class="v2-tb-endpoint" style="--tb-target:{pct:.1f}%;left:{pct:.1f}%"></div>'
+        '<div class="v2-tb-scan"></div>'
+        '</div>'
+        '<div class="v2-tb-ticks">'
+        + "".join(f"<span>{t}</span>" for t in ticks) +
+        '</div>'
+        '</div>'
+        '<div class="v2-tb-counts">'
+        f'<div><span class="v2-tb-used">{used_h}</span> / {budget_h}</div>'
+        f'<div class="v2-tb-proj-label">→ {projected_h} projected</div>'
+        '</div>'
+        '</div>'
+        '</div>'
+    )
+
+
+# ── YtWeekReview parser + renderer (commit 7) ──────────────
+import uuid as _uuid
+
+YT_REVIEWS_DIR = VAULT_PATH / "inbox" / "reports" / "yt-reviews"
+QUEUE_DIR = VAULT_PATH / "system" / "queue"
+RUNS_BG_DIR = VAULT_PATH / "system" / "runs"
+
+
+def read_queue_state(recent_window_min: int = 30, include_errors: bool = False) -> list[dict]:
+    """Return pending + active + recently-completed background runs.
+
+    Sources:
+      - system/queue/<uuid>.json  — pending intents (runner hasn't picked up)
+      - system/runs/<uuid>.json   — runner-tracked runs (queued/running/ok/err)
+
+    include_errors=False hides failed runs from the live panel so demos
+    + recordings don't show a wall of red. Failed JSON+md files stay on
+    disk for debugging — flip the flag (or open system/runs/ in Obsidian)
+    to inspect them.
+    """
+    items: list[dict] = []
+    now = datetime.now()
+
+    # Pending intents
+    if QUEUE_DIR.exists():
+        for f in QUEUE_DIR.glob("*.json"):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                args = data.get("args") or {}
+                items.append({
+                    "id": data.get("id", f.stem),
+                    "skill": args.get("source_label") or args.get("label") or data.get("skill", "?"),
+                    "status": "queued",
+                    "ts": data.get("ts_queued"),
+                    "elapsed_sec": None,
+                    "deliverable_path": None,
+                })
+            except (OSError, json.JSONDecodeError):
+                continue
+
+    # Active + recent in runs/
+    if RUNS_BG_DIR.exists():
+        recent_files = sorted(
+            RUNS_BG_DIR.glob("*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )[:20]
+        for f in recent_files:
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            args = data.get("args") or {}
+            skill = args.get("source_label") or args.get("label") or data.get("skill", "?")
+            status = (data.get("status") or "running").lower()
+            ts_completed = data.get("ts_completed")
+            ts_started = data.get("ts_started") or data.get("ts_queued")
+            elapsed = None
+            if ts_completed:
+                cdt = _parse_iso(ts_completed)
+                if cdt:
+                    age_min = (datetime.now(cdt.tzinfo) - cdt).total_seconds() / 60
+                    if age_min > recent_window_min:
+                        continue
+                # set elapsed = run duration
+                sdt = _parse_iso(ts_started) if ts_started else None
+                if sdt and cdt:
+                    elapsed = int((cdt - sdt).total_seconds())
+            else:
+                # still running
+                sdt = _parse_iso(ts_started) if ts_started else None
+                if sdt:
+                    elapsed = int((datetime.now(sdt.tzinfo) - sdt).total_seconds())
+                if status == "ok":
+                    status = "running"  # safety net if file lacks ts_completed
+            # Skip failed records from the display when include_errors is off.
+            if status in ("error", "err", "failed") and not include_errors:
+                continue
+            # Runner records deliverable_path relative to vault root, e.g.
+            # "inbox/reports/inbox-briefs/2026-05-13-abc.md". Pass through so the
+            # queue panel can link to the ACTUAL output, not the runner log.
+            items.append({
+                "id": data.get("id", f.stem),
+                "skill": skill,
+                "status": status,
+                "ts": ts_completed or ts_started,
+                "elapsed_sec": elapsed,
+                "deliverable_path": data.get("deliverable_path"),
+            })
+
+    # Sort: queued + running first, then most-recently-completed
+    def _rank(it):
+        s = it["status"]
+        if s == "running": return 0
+        if s == "queued":  return 1
+        return 2
+    items.sort(key=lambda it: (_rank(it), -(_parse_iso(it.get("ts") or "").timestamp() if _parse_iso(it.get("ts") or "") else 0)))
+    return items
+
+
+def _latest_in_dir(dir_path: Path, glob: str = "*.md") -> Path | None:
+    if not dir_path.exists():
+        return None
+    files = sorted(
+        (p for p in dir_path.glob(glob) if not p.name.startswith("_")),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return files[0] if files else None
+
+
+def parse_yt_review(path: Path | None = None) -> dict | None:
+    """Parse the latest yt-week-review markdown. Returns dict with tldr, uploads, top, under, window."""
+    if path is None:
+        path = _latest_in_dir(YT_REVIEWS_DIR)
+    if not path or not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8", errors="replace")
+
+    # Frontmatter
+    meta: dict = {"path": str(path), "name": path.name}
+    fm_match = _FRONTMATTER_RE.match(text)
+    if fm_match:
+        for line in fm_match.group(1).splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                meta[k.strip()] = v.strip()
+    body = text[fm_match.end():] if fm_match else text
+
+    # TL;DR — bullet list under ## TL;DR
+    tldr: list[str] = []
+    m = re.search(r"## TL;DR\s*\n(.*?)(?=\n##\s|\Z)", body, re.DOTALL)
+    if m:
+        for line in m.group(1).splitlines():
+            line = line.strip()
+            if line.startswith("- "):
+                tldr.append(line[2:])
+
+    # Uploads table — markdown table with headers Title | Views | vs Baseline | Likes | Comments | Verdict
+    uploads: list[dict] = []
+    m = re.search(r"## Uploads this week\s*\n(.*?)(?=\n##\s|\Z)", body, re.DOTALL)
+    if m:
+        for line in m.group(1).splitlines():
+            if not line.startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if not cells or cells[0].lower().startswith("video") or set(cells[0]) <= {"-", ":"}:
+                continue
+            if len(cells) < 6:
+                continue
+            try:
+                views = int(cells[1].replace(",", ""))
+            except ValueError:
+                continue
+            uploads.append({
+                "title": cells[0],
+                "views": views,
+                "vs_baseline": cells[2],
+                "likes": cells[3],
+                "comments": cells[4],
+                "verdict": cells[5],
+            })
+
+    # Top performer + underperformer headlines
+    def _section(heading: str) -> str:
+        m = re.search(rf"## {re.escape(heading)} — (.+?)\n(.*?)(?=\n##\s|\Z)", body, re.DOTALL)
+        if not m:
+            return ""
+        title = m.group(1).strip()
+        return title
+
+    top = _section("Top performer")
+    under = _section("Underperformer")
+
+    return {
+        "meta": meta,
+        "window": meta.get("window") or meta.get("date") or "",
+        "tldr": tldr,
+        "uploads": uploads,
+        "top": top,
+        "under": under,
+    }
+
+
+def write_queue_intent(skill: str, args: dict | None = None) -> tuple[str, Path]:
+    """Drop an intent JSON into system/queue/. Runner picks it up."""
+    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+    uid = str(_uuid.uuid4())
+    path = QUEUE_DIR / f"{uid}.json"
+    payload = {
+        "id": uid,
+        "skill": skill,
+        "args": args or {},
+        "ts_queued": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "source": "streamlit",
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return uid, path
+
+
+_VERDICT_TONE = {
+    "hit":      "hit",
+    "steady":   "steady",
+    "climbing": "climbing",
+    "miss":     "miss",
+}
+
+
+def render_yt_review_card(review: dict | None, tab_key: str = "audience") -> None:
+    """Render YtWeekReview marquee directly into the current Streamlit context."""
+    if not review:
+        # Empty state — prominent RUN NEW button
+        st.markdown(
+            '<div class="v2-ytr-card">'
+            '<div class="v2-ytr-head"><span class="v2-ytr-title">YT WEEK REVIEW</span></div>'
+            '<div style="color:var(--fg-mute);font-size:0.78rem;margin:0.6rem 0">'
+            'No review on file yet. Run the skill to generate the first one.'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("▶ RUN /yt-week-review", key=f"ytr_run_empty_{tab_key}"):
+            uid, _ = write_queue_intent("yt-week-review")
+            st.toast(f"queued · {uid[:8]}", icon="✅")
+        return
+
+    window = html_escape(review.get("window") or "")
+    review_path = Path(review["meta"].get("path", ""))
+    full_uri = obsidian_uri(review_path) if review_path.exists() else "#"
+
+    # Header — title + actions row
+    st.markdown(
+        '<div class="v2-ytr-card">'
+        '<div class="v2-ytr-head">'
+        f'<span class="v2-ytr-title">YT WEEK REVIEW · {window}</span>'
+        '<span class="v2-ytr-actions">'
+        f'<a href="{full_uri}" target="_blank">FULL ↗</a>'
+        '</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    # TL;DR
+    tldr = review.get("tldr") or []
+    if tldr:
+        bullets = "".join(f"<li>{html_escape(b)}</li>" for b in tldr[:4])
+        st.markdown(f'<ul class="v2-ytr-tldr">{bullets}</ul>', unsafe_allow_html=True)
+
+    # Verdict chip row
+    uploads = review.get("uploads") or []
+    verdict_counts: dict[str, int] = {}
+    for u in uploads:
+        v = (u.get("verdict") or "").lower()
+        verdict_counts[v] = verdict_counts.get(v, 0) + 1
+    chip_html = '<div class="v2-chip-row">'
+    for v in ("hit", "climbing", "steady", "miss"):
+        n = verdict_counts.get(v, 0)
+        tone = _VERDICT_TONE.get(v, "steady")
+        chip_html += f'<span class="v2-chip {tone}">{v.upper()} {n}</span>'
+    chip_html += '</div>'
+    st.markdown(chip_html, unsafe_allow_html=True)
+
+    # Bar chart of per-video views (Altair, color by verdict)
+    if uploads:
+        df_up = pd.DataFrame([
+            {
+                "title": (u["title"][:38] + "…") if len(u["title"]) > 38 else u["title"],
+                "views": u["views"],
+                "verdict": (u.get("verdict") or "Steady").capitalize(),
+            }
+            for u in uploads
+        ])
+        verdict_colors = {
+            "Hit":       "#8fb97a",
+            "Climbing":  "#d9a566",
+            "Steady":    "#b0aea5",
+            "Miss":      "#c96442",
+        }
+        chart = (
+            alt.Chart(df_up)
+            .mark_bar(cornerRadiusEnd=2)
+            .encode(
+                y=alt.Y("title:N", sort="-x", axis=alt.Axis(title=None, labelFontSize=10, labelLimit=300, labelColor="#b0aea5")),
+                x=alt.X("views:Q", axis=alt.Axis(title=None, labelFontSize=9, format="~s", labelColor="#87867f", grid=False)),
+                color=alt.Color(
+                    "verdict:N",
+                    scale=alt.Scale(
+                        domain=list(verdict_colors.keys()),
+                        range=list(verdict_colors.values()),
+                    ),
+                    legend=None,
+                ),
+                tooltip=["title", "views", "verdict"],
+            )
+            .properties(height=max(110, 26 * len(uploads)), background="transparent")
+            .configure_view(strokeWidth=0)
+            .configure_axis(domain=False, tickColor="#3a3937")
+        )
+        st.altair_chart(chart, use_container_width=True)
+
+    # Top performer + underperformer mini-cards
+    top = review.get("top") or ""
+    under = review.get("under") or ""
+    perfs_html = '<div class="v2-ytr-perfs">'
+    if top:
+        perfs_html += (
+            '<div class="v2-perf-card top">'
+            '<div class="v2-perf-label">TOP PERFORMER</div>'
+            f'<div class="v2-perf-title">{html_escape(top)}</div>'
+            '</div>'
+        )
+    if under:
+        perfs_html += (
+            '<div class="v2-perf-card under">'
+            '<div class="v2-perf-label">UNDERPERFORMER</div>'
+            f'<div class="v2-perf-title">{html_escape(under)}</div>'
+            '</div>'
+        )
+    perfs_html += '</div></div>'
+    st.markdown(perfs_html, unsafe_allow_html=True)
+
+    if st.button("▶ RUN /yt-week-review (fresh)", key=f"ytr_run_{tab_key}"):
+        uid, _ = write_queue_intent("yt-week-review")
+        st.toast(f"queued · {uid[:8]}", icon="✅")
+
+
+# ── MorningBrief parser + renderer (commit 8) ──────────────
+
+MORNING_DIR = VAULT_PATH / "inbox" / "reports" / "morning"
+
+
+def _extract_section(body: str, heading_pattern: str) -> str:
+    m = re.search(rf"##\s+{heading_pattern}\s*\n(.*?)(?=\n##\s|\Z)", body, re.DOTALL)
+    return m.group(1) if m else ""
+
+
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^\)]+\)")
+_MD_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
+
+
+def _clean_md(text: str) -> str:
+    """Strip markdown bold + link syntax from a bullet so it renders as plain text."""
+    text = _MD_LINK_RE.sub(r"\1", text)
+    text = _MD_BOLD_RE.sub(r"\1", text)
+    return text.strip()
+
+
+def _bullets(section: str, limit: int = 3) -> list[str]:
+    out = []
+    for line in section.splitlines():
+        s = line.strip()
+        if s.startswith("- "):
+            text = _clean_md(s[2:].lstrip())
+            out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _bullet_count(section: str) -> int:
+    return sum(1 for line in section.splitlines() if line.strip().startswith("- "))
+
+
+def _table_rows(section: str) -> int:
+    count = 0
+    for line in section.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not cells or set(cells[0]) <= {"-", ":"} or cells[0].lower() in ("video", "creator", "title"):
+            continue
+        count += 1
+    return count
+
+
+def _parse_yt_table(section: str, limit: int = 3) -> list[dict]:
+    """Parse the YouTube trending markdown table. Returns list of {title, creator, views}."""
+    out: list[dict] = []
+    for line in section.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not cells or set(cells[0]) <= {"-", ":"}:
+            continue
+        if cells[0].lower() in ("video", "title", "creator"):
+            continue
+        if len(cells) < 3:
+            continue
+        out.append({
+            "title":   _clean_md(cells[0]),
+            "creator": _clean_md(cells[1]) if len(cells) > 1 else "",
+            "views":   cells[2] if len(cells) > 2 else "",
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _parse_x_voices(body: str, limit: int = 3) -> list[str]:
+    """Extract bullets nested under **Top voices:** in the morning brief X section."""
+    m = re.search(r"\*\*Top voices:\*\*\s*\n((?:\s+-\s+.+\n?)+)", body)
+    if not m:
+        return []
+    out: list[str] = []
+    for l in m.group(1).splitlines():
+        s = l.strip()
+        if s.startswith("- "):
+            out.append(_clean_md(s[2:].lstrip()))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def parse_morning_brief(path: Path | None = None) -> dict | None:
+    if path is None:
+        path = _latest_in_dir(MORNING_DIR)
+    if not path or not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8", errors="replace")
+    fm_match = _FRONTMATTER_RE.match(text)
+    body = text[fm_match.end():] if fm_match else text
+
+    headlines_s = _extract_section(body, r"Headlines")
+    yt_s = _extract_section(body, r"YouTube[^\n]*Trending[^\n]*")
+    web_s = _extract_section(body, r"Web[^\n]*News[^\n]*")
+    x_s = _extract_section(body, r"X[^\n]*Twitter[^\n]*")
+    gh_s = _extract_section(body, r"GitHub[^\n]*Builder[^\n]*")
+    opps_s = _extract_section(body, r"Content Opportunities")
+
+    # X voices nested bullets under "**Top voices:**"
+    voice_bullets = _parse_x_voices(body, limit=3)
+    voices_n = 0
+    m_voices = re.search(r"\*\*Top voices:\*\*\s*\n((?:\s+-\s+.+\n?)+)", body)
+    if m_voices:
+        voices_n = sum(1 for l in m_voices.group(1).splitlines() if l.strip().startswith("- "))
+
+    return {
+        "path": str(path),
+        "name": path.name,
+        "headlines":   _bullets(headlines_s, 3),
+        "headlines_n": _bullet_count(headlines_s),
+        "yt_top":      _parse_yt_table(yt_s, limit=3),
+        "yt_rows":     _table_rows(yt_s),
+        "x_voices":    voice_bullets,
+        "x_voices_n":  voices_n,
+        "web_n":       _bullet_count(web_s),
+        "gh_n":        _bullet_count(gh_s),
+        "opps":        _bullets(opps_s, 3),
+        "opps_n":      _bullet_count(opps_s),
+    }
+
+
+def render_morning_brief(brief: dict | None) -> None:
+    if not brief:
+        st.markdown(
+            '<div class="v2-mb-grid">'
+            '<div class="v2-mb-tile"><div class="v2-mb-label">MORNING BRIEF</div>'
+            '<div style="color:var(--fg-mute);font-size:0.78rem">No brief on file. Run the /morning skill.</div>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    # Coverage chip row
+    cov = (
+        '<div class="v2-mb-coverage">'
+        f'<span>{brief["headlines_n"]} HEADLINES</span>'
+        f'<span>{brief["web_n"]} ARTICLES</span>'
+        f'<span>{brief["x_voices_n"]} X VOICES</span>'
+        f'<span>{brief["gh_n"]} REPOS</span>'
+        f'<span>{brief["opps_n"]} OPPS</span>'
+        '</div>'
+    )
+    st.markdown(cov, unsafe_allow_html=True)
+
+    def _tile(label: str, items: list[str]) -> str:
+        if not items:
+            body = '<div style="color:var(--fg-mute);font-size:0.74rem">no data</div>'
+        else:
+            body = "<ul>" + "".join(f"<li>{html_escape(i[:180])}</li>" for i in items) + "</ul>"
+        return f'<div class="v2-mb-tile"><div class="v2-mb-label">{label}</div>{body}</div>'
+
+    # YT trending tile — render top videos with creator + view count
+    yt_items = [
+        f'{html_escape(v["title"])} <span style="color:var(--cc-fg-2)">· {html_escape(v["creator"])} · {html_escape(v["views"])}</span>'
+        for v in (brief.get("yt_top") or [])
+    ]
+    x_items = [html_escape(s) for s in (brief.get("x_voices") or [])]
+    headlines_items = [html_escape(s) for s in (brief.get("headlines") or [])]
+    opps_items = [html_escape(s) for s in (brief.get("opps") or [])]
+
+    def _tile_html(label: str, items: list[str]) -> str:
+        if not items:
+            body = '<div style="color:var(--cc-fg-2);font-size:0.74rem">no data</div>'
+        else:
+            body = "<ul>" + "".join(f"<li>{i[:240]}</li>" for i in items) + "</ul>"
+        return f'<div class="v2-mb-tile"><div class="v2-mb-label">{label}</div>{body}</div>'
+
+    grid = (
+        '<div class="v2-mb-grid">'
+        + _tile_html("HEADLINES",        headlines_items)
+        + _tile_html("YT · TRENDING",    yt_items)
+        + _tile_html("X · CONVERSATION", x_items)
+        + _tile_html("CONTENT OPPS",     opps_items)
+        + '</div>'
+    )
+    st.markdown(grid, unsafe_allow_html=True)
+
+    brief_path = Path(brief["path"])
+    if brief_path.exists():
+        uri = obsidian_uri(brief_path)
+        st.markdown(
+            f'<div style="text-align:right;font-size:0.65rem;margin-top:0.3rem">'
+            f'<a href="{uri}" target="_blank" style="color:var(--accent);text-decoration:none;letter-spacing:0.1em">FULL ↗</a>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
+# ── Daily note → Schedule + Daily Drivers (commit 8) ───────
+
+def parse_daily_note(date_iso: str | None = None) -> dict:
+    """Read today's (or given date's) daily note. Returns dict with schedule + drivers."""
+    if date_iso is None:
+        date_iso = date.today().isoformat()
+    note = DAILY_NOTES_DIR / f"{date_iso}.md"
+    out = {"path": str(note), "schedule": [], "drivers": []}
+    if not note.exists():
+        return out
+    text = note.read_text(encoding="utf-8", errors="replace")
+    sched_s = _extract_section(text, r"Schedule")
+    for line in sched_s.splitlines():
+        s = line.strip()
+        if not s.startswith("- "):
+            continue
+        # Format: "- HH:MM — label"
+        m = re.match(r"-\s+(\d{1,2}:\d{2})\s*[—\-–]\s*(.+)", s)
+        if m:
+            out["schedule"].append({"time": m.group(1), "label": m.group(2).strip()})
+    drv_s = _extract_section(text, r"Daily Drivers")
+    for line in drv_s.splitlines():
+        s = line.strip()
+        m = re.match(r"-\s+\[([ xX])\]\s+(.+)", s)
+        if m:
+            out["drivers"].append({"done": m.group(1).lower() == "x", "label": m.group(2).strip()})
+    return out
+
+
+def render_schedule_panel(events: list[dict]) -> str:
+    if not events:
+        body = '<div style="color:var(--cc-fg-2);font-size:12px">no schedule today</div>'
+    else:
+        rows = "".join(
+            f'<div class="v2-sched-row"><span class="v2-sched-time">{html_escape(e["time"])}</span>'
+            f'<span class="v2-sched-label">{html_escape(e["label"])}</span></div>'
+            for e in events
+        )
+        # CSS-columns flow into 2 columns when >=4 events; single column otherwise.
+        list_class = "v2-sched-list" if len(events) >= 4 else "v2-sched-list-single"
+        body = f'<div class="{list_class}">{rows}</div>'
+    return (
+        '<div class="v2-panel v2-sched-panel">'
+        '<div class="v2-panel-head">§ SCHEDULE · TODAY</div>'
+        f'{body}</div>'
+    )
+
+
+def toggle_driver_in_note(date_iso: str, idx: int, new_state: bool) -> bool:
+    """Flip the idx-th `- [ ]` ↔ `- [x]` bullet in today's Daily Drivers section.
+
+    Returns True on success. Idempotent — runs the file edit even if state already matches.
+    """
+    note = DAILY_NOTES_DIR / f"{date_iso}.md"
+    if not note.exists():
+        return False
+    text = note.read_text(encoding="utf-8")
+    m = re.search(r"(##\s+Daily Drivers\s*\n)(.*?)(?=\n##\s|\Z)", text, re.DOTALL)
+    if not m:
+        return False
+    head_end = m.end(1)
+    section_start = m.start(2)
+    section = m.group(2)
+    lines = section.split("\n")
+    bullet_positions: list[int] = []
+    for i, line in enumerate(lines):
+        if re.match(r"-\s+\[[ xX]\]\s+", line.strip()):
+            bullet_positions.append(i)
+    if idx >= len(bullet_positions):
+        return False
+    li = bullet_positions[idx]
+    line = lines[li]
+    if new_state:
+        line = re.sub(r"\[[ ]\]", "[x]", line, count=1)
+    else:
+        line = re.sub(r"\[[xX]\]", "[ ]", line, count=1)
+    lines[li] = line
+    new_section = "\n".join(lines)
+    new_text = text[:section_start] + new_section + text[section_start + len(section):]
+    note.write_text(new_text, encoding="utf-8")
+    return True
+
+
+def render_daily_drivers_widget(drivers: list[dict], date_iso: str) -> None:
+    """Native st.checkbox renderer — toggling writes back to the daily note.
+
+    Replaces the read-only HTML renderer so Streamlit gains parity with Obsidian's
+    inline checkbox interaction.
+    """
+    st.markdown(
+        '<div class="v2-panel v2-panel-drivers-head">'
+        '<div class="v2-panel-head">§ DAILY DRIVERS</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    if not drivers:
+        st.markdown(
+            '<div style="color:var(--cc-fg-2);font-size:12px;padding:4px 0">no drivers seeded today</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.markdown('<div class="v2-driver-stack-marker"></div>', unsafe_allow_html=True)
+    for idx, d in enumerate(drivers):
+        key = f"drv_{date_iso}_{idx}"
+        if key not in st.session_state:
+            st.session_state[key] = d["done"]
+
+        def _on_change(_idx=idx, _key=key, _date=date_iso):
+            toggle_driver_in_note(_date, _idx, bool(st.session_state.get(_key, False)))
+
+        st.checkbox(d["label"], key=key, on_change=_on_change)
+
+    st.markdown(
+        '<div style="color:var(--cc-fg-2);font-size:9px;letter-spacing:0.18em;'
+        'margin-top:6px;text-transform:uppercase">writes back to daily note</div>',
+        unsafe_allow_html=True,
+    )
+
+
 five_h_reset = (rate_limits.get("five_hour") or {}).get("resets_at")
 week_reset = (rate_limits.get("weekly") or {}).get("resets_at")
 
 five_h_tokens = usage["five_hour"]["total"]
+# Prefer metrics.csv `claude_code/billable_5h` row when present — that's the
+# authoritative Anthropic-billed 5h count (matches claude.ai dev page).
+# Falls back to legacy session-meta scan when no metrics-pull row exists.
+_billable_5h, _billable_ts = read_claude_5h_billable()
+if _billable_5h is not None and not getattr(_cfg, "DEMO_MODE", False):
+    five_h_tokens = _billable_5h
 week_tokens = usage["weekly"]["total"]
 routines_today = usage["today"]["routines"]
 today_runs = usage["today"]["runs"]
@@ -2343,55 +4306,29 @@ _5h_delta = compute_delta(_5h_cur, _5h_pri)
 _wk_delta = compute_delta(_wk_cur, _wk_pri)
 _rt_delta = compute_delta(_rt_today, _rt_yday)
 
-m1, m2, m3 = st.columns(3, gap="small")
-with m1:
+_enabled_cards = getattr(_cfg, "ENABLED_CARDS", {}) or {}
+
+# ═══════════════════════════════════════════════════════════
+# TOKENBURN — single 5h meter replaces the legacy 3-meter row
+# (5h / weekly / routines). Mirrors the Obsidian cockpit pattern.
+# ═══════════════════════════════════════════════════════════
+
+if _enabled_cards.get("tokenburn", True):
     st.markdown(
-        render_gauge(
-            "5-hour window",
-            f"resets · {fmt_time_until(five_h_reset)}",
-            five_h_tokens,
-            LIMITS["five_hour_tokens"],
-            fmt_tokens(five_h_tokens),
-            fmt_tokens(LIMITS["five_hour_tokens"]),
-            f"· {usage['five_hour']['sessions']} sessions",
-            delta=_5h_delta,
-        ),
-        unsafe_allow_html=True,
-    )
-with m2:
-    st.markdown(
-        render_gauge(
-            "weekly window",
-            f"resets · {fmt_time_until(week_reset)}",
-            week_tokens,
-            LIMITS["weekly_tokens"],
-            fmt_tokens(week_tokens),
-            fmt_tokens(LIMITS["weekly_tokens"]),
-            f"· {usage['weekly']['sessions']} sessions",
-            delta=_wk_delta,
-        ),
-        unsafe_allow_html=True,
-    )
-with m3:
-    st.markdown(
-        render_gauge(
-            f"routines · {CLAUDE_PLAN}",
-            "resets · midnight",
-            routines_today,
-            LIMITS["daily_routine_runs"],
-            str(routines_today),
-            str(LIMITS["daily_routine_runs"]),
-            f"{fmt_cost(today_cost)} today",
-            delta=_rt_delta,
+        render_tokenburn_meter(
+            used=five_h_tokens,
+            budget=LIMITS["five_hour_tokens"],
+            reset_at=five_h_reset,
+            last_pull_ts=read_last_pull_ts(),
         ),
         unsafe_allow_html=True,
     )
 
-st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
-# RUNS-PER-DAY CHART
+# RUNS-PER-DAY CHART  (rendered inside Overview tab below)
 # ═══════════════════════════════════════════════════════════
 
 import plotly.graph_objects as go
@@ -2494,14 +4431,7 @@ def _build_activity_svg(df: pd.DataFrame) -> str:
     return svg
 
 
-st.markdown(
-    '<div class="chart-card parchment">'
-    '<div class="chart-title">agentic OS · cumulative activity · 30d '
-    f'<span>· {_cum_total:,} total · {_cum_30d} last 30d</span></div>'
-    + _build_activity_svg(df_cum)
-    + '</div>',
-    unsafe_allow_html=True,
-)
+# 30-day cumulative chart rendered inside Overview tab (see LAYOUT block below).
 
 
 # ═══════════════════════════════════════════════════════════
@@ -2529,446 +4459,667 @@ if mcp_servers:
 
 st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 
-col_main, col_side = st.columns([2.6, 1], gap="large")
+_layout_v = getattr(_cfg, "LAYOUT_VERSION", "v1")
+if _layout_v == "v2":
+    overview_tab, audience_tab, research_tab = st.tabs([
+        "overview", "audience", "research",
+    ])
+else:
+    # v1 fallback — no tabs, single column. Defined as null context for indented block below.
+    from contextlib import nullcontext
+    overview_tab = nullcontext()
+    audience_tab = nullcontext()
+    research_tab = nullcontext()
+
+with overview_tab:
+
+    # ── Schedule + Throughput chart (2-col) ───────────────────
+    _show_sched = _enabled_cards.get("schedule", True)
+    _show_drv   = _enabled_cards.get("daily_drivers", False)
+    _show_thru  = _enabled_cards.get("throughput", True)
+    if _show_sched or _show_drv or _show_thru:
+        _today_iso = date.today().isoformat()
+        _daily = parse_daily_note(_today_iso)
+        _sd_cols = st.columns(2, gap="small")
+        with _sd_cols[0]:
+            if _show_sched:
+                st.markdown(render_schedule_panel(_daily["schedule"]), unsafe_allow_html=True)
+        with _sd_cols[1]:
+            if _show_drv:
+                render_daily_drivers_widget(_daily["drivers"], _today_iso)
+            elif _show_thru:
+                # 30-day throughput chart — placeholder metric, swap name for any skill mix
+                st.markdown(
+                    '<div class="v2-panel v2-thru-panel">'
+                    '<div class="v2-panel-head">'
+                    '<span>§ AGENT RUNS · 30D</span>'
+                    f'<span class="v2-thru-meta">{_cum_total:,} total · {_cum_30d} last 30d</span>'
+                    '</div>'
+                    f'<div class="v2-thru-svg">{_build_activity_svg(df_cum)}</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+        st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+
+    col_main, col_side = st.columns([2.6, 1], gap="large")
 
 
-# ——— SIDEBAR COLUMN: recent runs ———
-with col_side:
-    runs = list_recent_runs(8)
-    card_html = '<div class="runs-card"><div class="cat-label">recent runs</div>'
-    if not runs:
-        card_html += '<div style="color: var(--text-mute); font-size: 0.8rem; padding: 0.4rem 0 0.5rem 0;">no runs yet</div>'
-    else:
-        card_html += '<div class="run-list">'
-        for r in runs:
-            mtime = datetime.fromtimestamp(r.stat().st_mtime)
-            label = r.stem.split("-", 2)[-1].replace("-", " ")
-            uri = obsidian_uri(r)
-            card_html += (
-                f'<div class="run-row">'
-                f'<span class="run-time">{mtime.strftime("%H:%M")}</span>'
-                f'<span class="run-label">{html_escape(label)}</span>'
-                f'<a href="{uri}" target="_blank">open ↗</a>'
-                f'</div>'
-            )
+    # ——— SIDEBAR COLUMN: queue + recent runs ———
+    with col_side:
+        # Background queue card — pending + running + recently-completed.
+        # Wrapped in a 3s fragment so newly queued/finishing background runs
+        # appear without a full page rerun.
+        @st.fragment(run_every=3.0)
+        def queue_card_fragment():
+            _q_state = read_queue_state(recent_window_min=30)
+            if not _q_state:
+                return
+            _q_html = '<div class="v2-panel v2-queue-card"><div class="v2-panel-head">§ BACKGROUND QUEUE</div>'
+            for it in _q_state[:8]:
+                st_class = it["status"]  # queued / running / ok / err
+                dot_class = {
+                    "running": "running",
+                    "queued":  "queued",
+                    "ok":      "done",
+                }.get(st_class, "err")
+                elapsed_html = (
+                    f'<span class="v2-queue-meta">{fmt_ago(it["elapsed_sec"])}</span>'
+                    if it["elapsed_sec"] is not None
+                    else '<span class="v2-queue-meta">—</span>'
+                )
+                # Link only when the run is fully complete (status "ok") AND
+                # the runner has recorded a deliverable_path. Points at the
+                # actual output (e.g. inbox-brief markdown), not the runner
+                # log file. Queued / running / error rows render an empty
+                # slot so every row keeps the same column widths.
+                link_inner = ""
+                if st_class == "ok" and it.get("deliverable_path"):
+                    deliverable_full = VAULT_PATH / it["deliverable_path"]
+                    if deliverable_full.exists():
+                        try:
+                            link_inner = (
+                                f'<a href="{obsidian_uri(deliverable_full)}" '
+                                f'target="_blank" class="v2-queue-link" '
+                                f'title="open deliverable">open ↗</a>'
+                            )
+                        except Exception:
+                            link_inner = ""
+                link_slot = f'<span class="v2-queue-link-slot">{link_inner or "&nbsp;"}</span>'
+                _q_html += (
+                    '<div class="v2-queue-row">'
+                    f'<span class="v2-queue-dot {dot_class}"></span>'
+                    f'<span class="v2-queue-label">{html_escape(it["skill"])}</span>'
+                    f'<span class="v2-queue-status">{st_class}</span>'
+                    f'{elapsed_html}'
+                    f'{link_slot}'
+                    '</div>'
+                )
+            _q_html += '</div>'
+            st.markdown(_q_html, unsafe_allow_html=True)
+
+        queue_card_fragment()
+
+        runs = list_recent_runs(8)
+        card_html = '<div class="runs-card"><div class="cat-label">recent runs</div>'
+        if not runs:
+            card_html += '<div style="color: var(--text-mute); font-size: 0.8rem; padding: 0.4rem 0 0.5rem 0;">no runs yet</div>'
+        else:
+            card_html += '<div class="run-list">'
+            for r in runs:
+                mtime = datetime.fromtimestamp(r.stat().st_mtime)
+                label = r.stem.split("-", 2)[-1].replace("-", " ")
+                uri = obsidian_uri(r)
+                card_html += (
+                    f'<div class="run-row">'
+                    f'<span class="run-time">{mtime.strftime("%H:%M")}</span>'
+                    f'<span class="run-label">{html_escape(label)}</span>'
+                    f'<a href="{uri}" target="_blank">open ↗</a>'
+                    f'</div>'
+                )
+            card_html += '</div>'
         card_html += '</div>'
-    card_html += '</div>'
-    st.markdown(card_html, unsafe_allow_html=True)
+        st.markdown(card_html, unsafe_allow_html=True)
 
-    # Mini 7-day runs bar chart (bottom-right "dead space" filler)
-    df_7 = activity_cumulative(7)
-    _bar_labels = df_7["date"].dt.strftime("%a").tolist()
-    _bar_vals = df_7["day_count"].tolist()
-    _bar_total = int(sum(_bar_vals))
+        # Mini 7-day runs bar chart (bottom-right "dead space" filler)
+        df_7 = activity_cumulative(7)
+        _bar_labels = df_7["date"].dt.strftime("%a").tolist()
+        _bar_vals = df_7["day_count"].tolist()
+        _bar_total = int(sum(_bar_vals))
 
-    st.markdown(
-        '<div class="chart-card mini-chart">'
-        '<div class="chart-title">last <em>seven</em> days '
-        f'<span>· {_bar_total} runs</span></div>',
-        unsafe_allow_html=True,
-    )
-    _barfig = go.Figure()
-    _barfig.add_trace(
-        go.Bar(
-            x=_bar_labels,
-            y=_bar_vals,
-            marker=dict(color="#c96442", line=dict(width=0)),
-            hovertemplate="<b>%{x}</b><br>%{y} runs<extra></extra>",
+        st.markdown(
+            '<div class="chart-card mini-chart">'
+            '<div class="chart-title">last <em>seven</em> days '
+            f'<span>· {_bar_total} runs</span></div>',
+            unsafe_allow_html=True,
         )
-    )
-    _barfig.update_layout(
-        height=120,
-        margin=dict(l=20, r=20, t=10, b=28),
-        paper_bgcolor="#1c1b19",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="JetBrains Mono, monospace", size=9, color="#b0aea5"),
-        showlegend=False,
-        bargap=0.32,
-        hoverlabel=dict(
-            bgcolor="#0e0f10",
-            bordercolor="#c96442",
-            font=dict(family="JetBrains Mono, monospace", color="#faf9f5", size=10),
-        ),
-        xaxis=dict(
-            showgrid=False, zeroline=False, showline=False,
-            tickfont=dict(color="#b0aea5", size=9),
-        ),
-        yaxis=dict(
-            showgrid=False, zeroline=False, showline=False, showticklabels=False,
-        ),
-    )
-    st.plotly_chart(_barfig, use_container_width=True, config={"displayModeBar": False})
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # ——— Forecast card (5-hour burn projection) ———
-    _cap = LIMITS["five_hour_tokens"]
-    _used = five_h_tokens
-    _remaining = max(0, _cap - _used)
-    _reset_in_sec = max(0, int(five_h_reset - time.time())) if five_h_reset else 0
-    _reset_in_min = _reset_in_sec // 60
-    _window_min = 300  # 5h
-    _elapsed_min = max(1, _window_min - _reset_in_min) if _reset_in_min else 1
-    _burn_per_min = (_used / _elapsed_min) if _elapsed_min > 0 else 0
-    _exhaust_in_min = int(_remaining / _burn_per_min) if _burn_per_min > 0 else None
-    _will_exhaust = _exhaust_in_min is not None and _exhaust_in_min < _reset_in_min
-
-    _elapsed_pct = min(100, _elapsed_min / _window_min * 100)
-    if _will_exhaust and _exhaust_in_min is not None:
-        _proj_end_min = _elapsed_min + _exhaust_in_min
-    else:
-        _proj_end_min = _window_min
-    _proj_pct = max(_elapsed_pct, min(100, _proj_end_min / _window_min * 100))
-    _proj_left = _elapsed_pct
-    _proj_width = max(0, _proj_pct - _elapsed_pct)
-    _now_pct = _elapsed_pct
-
-    if _will_exhaust and _exhaust_in_min is not None:
-        _hit = (datetime.now() + timedelta(minutes=_exhaust_in_min)).strftime("%H:%M")
-        _headline = f'cap at <em>{_hit}</em>'
-    else:
-        _headline = 'under cap <em>this window</em>'
-    _sub = (
-        f'burn · {fmt_tokens(int(_burn_per_min))}/min'
-        if _burn_per_min > 0 else 'burn · idle'
-    )
-
-    # Next scheduled routines — hardcoded schedule until real cron wired in
-    _scheduled = [
-        ("17:00", "evening digest"),
-        ("22:00", "vault compact"),
-        ("09:00", "morning brief"),
-    ]
-    _now_dt = datetime.now()
-    _sched_rows = []
-    for hhmm, label in _scheduled:
-        _h, _m = [int(x) for x in hhmm.split(":")]
-        _next = _now_dt.replace(hour=_h, minute=_m, second=0, microsecond=0)
-        if _next <= _now_dt:
-            _next = _next + timedelta(days=1)
-        _sched_rows.append((_next, hhmm, label))
-    _sched_rows.sort(key=lambda r: r[0])
-    _sched_html = '<div class="cpt-sched">'
-    for dt, hhmm, label in _sched_rows[:2]:
-        _sched_html += (
-            '<div class="cpt-sched-row">'
-            f'<span class="cpt-sched-time">{hhmm}</span>'
-            f'<span class="cpt-sched-label">{label}</span>'
-            f'<span class="cpt-sched-in">in {fmt_time_until(int(dt.timestamp()))}</span>'
-            '</div>'
+        _barfig = go.Figure()
+        _barfig.add_trace(
+            go.Bar(
+                x=_bar_labels,
+                y=_bar_vals,
+                marker=dict(color="#c96442", line=dict(width=0)),
+                hovertemplate="<b>%{x}</b><br>%{y} runs<extra></extra>",
+            )
         )
-    _sched_html += '</div>'
+        _barfig.update_layout(
+            height=120,
+            margin=dict(l=20, r=20, t=10, b=28),
+            paper_bgcolor="#1c1b19",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="JetBrains Mono, monospace", size=9, color="#b0aea5"),
+            showlegend=False,
+            bargap=0.32,
+            hoverlabel=dict(
+                bgcolor="#0e0f10",
+                bordercolor="#c96442",
+                font=dict(family="JetBrains Mono, monospace", color="#faf9f5", size=10),
+            ),
+            xaxis=dict(
+                showgrid=False, zeroline=False, showline=False,
+                tickfont=dict(color="#b0aea5", size=9),
+            ),
+            yaxis=dict(
+                showgrid=False, zeroline=False, showline=False, showticklabels=False,
+            ),
+        )
+        st.plotly_chart(_barfig, use_container_width=True, config={"displayModeBar": False})
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown(
-        '<div class="cpt-forecast">'
-        f'<div class="cpt-forecast-head">forecast · 5h'
-        f'<span class="cpt-forecast-sub">{_sub}</span></div>'
-        f'<div class="cpt-forecast-head" '
-        'style="font-size:0.7rem;color:var(--fg-dim);margin-bottom:0;">'
-        f'{_headline}</div>'
-        '<div class="cpt-forecast-track">'
-        f'<div class="cpt-forecast-elapsed" style="width:{_elapsed_pct:.1f}%"></div>'
-        f'<div class="cpt-forecast-proj" '
-        f'style="left:{_proj_left:.1f}%;width:{_proj_width:.1f}%"></div>'
-        f'<div class="cpt-forecast-now" style="left:{_now_pct:.1f}%"></div>'
-        '</div>'
-        '<div class="cpt-forecast-legend">'
-        '<span><em>█</em> elapsed</span>'
-        '<span><em>▨</em> projected</span>'
-        '<span><em>│</em> now</span>'
-        f'<span>resets · {fmt_time_until(five_h_reset)}</span>'
-        '</div>'
-        f'{_sched_html}'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+        # ——— Forecast card (5-hour burn projection) ———
+        _cap = LIMITS["five_hour_tokens"]
+        _used = five_h_tokens
+        _remaining = max(0, _cap - _used)
+        _reset_in_sec = max(0, int(five_h_reset - time.time())) if five_h_reset else 0
+        _reset_in_min = _reset_in_sec // 60
+        _window_min = 300  # 5h
+        _elapsed_min = max(1, _window_min - _reset_in_min) if _reset_in_min else 1
+        _burn_per_min = (_used / _elapsed_min) if _elapsed_min > 0 else 0
+        _exhaust_in_min = int(_remaining / _burn_per_min) if _burn_per_min > 0 else None
+        _will_exhaust = _exhaust_in_min is not None and _exhaust_in_min < _reset_in_min
 
-    # ——— Vault pulse ———
-    pulse_items = list_vault_pulse(6)
-    if pulse_items:
-        pulse_html = '<div class="cpt-pulse-card"><div class="cpt-cat">vault pulse</div>'
-        for it in pulse_items:
-            try:
-                uri = obsidian_uri(it["path"])
-            except Exception:
-                uri = "#"
-            pulse_html += (
-                '<div class="cpt-pulse">'
-                f'<span class="cpt-verb {it["verb"]}">{it["verb"]}</span>'
-                '<div class="cpt-pulse-main">'
-                f'<div class="cpt-pulse-name">'
-                f'<a href="{uri}" target="_blank" '
-                'style="color:inherit;text-decoration:none;">'
-                f'{html_escape(it["name"])}</a></div>'
-                f'<div class="cpt-pulse-dir">{html_escape(it["dir"])}</div>'
-                '</div>'
-                f'<span class="cpt-pulse-ago">{fmt_ago(it["age_sec"])}</span>'
+        _elapsed_pct = min(100, _elapsed_min / _window_min * 100)
+        if _will_exhaust and _exhaust_in_min is not None:
+            _proj_end_min = _elapsed_min + _exhaust_in_min
+        else:
+            _proj_end_min = _window_min
+        _proj_pct = max(_elapsed_pct, min(100, _proj_end_min / _window_min * 100))
+        _proj_left = _elapsed_pct
+        _proj_width = max(0, _proj_pct - _elapsed_pct)
+        _now_pct = _elapsed_pct
+
+        if _will_exhaust and _exhaust_in_min is not None:
+            _hit = (datetime.now() + timedelta(minutes=_exhaust_in_min)).strftime("%H:%M")
+            _headline = f'cap at <em>{_hit}</em>'
+        else:
+            _headline = 'under cap <em>this window</em>'
+        _sub = (
+            f'burn · {fmt_tokens(int(_burn_per_min))}/min'
+            if _burn_per_min > 0 else 'burn · idle'
+        )
+
+        # Next scheduled routines — hardcoded schedule until real cron wired in
+        _scheduled = [
+            ("17:00", "evening digest"),
+            ("22:00", "vault compact"),
+            ("09:00", "morning brief"),
+        ]
+        _now_dt = datetime.now()
+        _sched_rows = []
+        for hhmm, label in _scheduled:
+            _h, _m = [int(x) for x in hhmm.split(":")]
+            _next = _now_dt.replace(hour=_h, minute=_m, second=0, microsecond=0)
+            if _next <= _now_dt:
+                _next = _next + timedelta(days=1)
+            _sched_rows.append((_next, hhmm, label))
+        _sched_rows.sort(key=lambda r: r[0])
+        _sched_html = '<div class="cpt-sched">'
+        for dt, hhmm, label in _sched_rows[:2]:
+            _sched_html += (
+                '<div class="cpt-sched-row">'
+                f'<span class="cpt-sched-time">{hhmm}</span>'
+                f'<span class="cpt-sched-label">{label}</span>'
+                f'<span class="cpt-sched-in">in {fmt_time_until(int(dt.timestamp()))}</span>'
                 '</div>'
             )
-        pulse_html += '</div>'
-        st.markdown(pulse_html, unsafe_allow_html=True)
+        _sched_html += '</div>'
 
-
-
-# ——— MAIN COLUMN ———
-with col_main:
-    hero_slot = st.empty()
-
-    def render_hero_error():
-        err = st.session_state.last_error or "unknown error"
-        label = (st.session_state.last_label or "skill").lower()
-        hero_slot.markdown(
-            f'<div class="hero-card error">'
-            f'<div class="hero-label">failed · {html_escape(label)}</div>'
-            f'<h2 class="hero-headline">run failed <em>·</em></h2>'
-            f'<pre class="error-detail">{html_escape(err)}</pre>'
-            f'<div class="error-hint">check logs or click ↻ rerun below</div>'
-            f'</div>',
+        st.markdown(
+            '<div class="cpt-forecast">'
+            f'<div class="cpt-forecast-head">forecast · 5h'
+            f'<span class="cpt-forecast-sub">{_sub}</span></div>'
+            f'<div class="cpt-forecast-head" '
+            'style="font-size:0.7rem;color:var(--fg-dim);margin-bottom:0;">'
+            f'{_headline}</div>'
+            '<div class="cpt-forecast-track">'
+            f'<div class="cpt-forecast-elapsed" style="width:{_elapsed_pct:.1f}%"></div>'
+            f'<div class="cpt-forecast-proj" '
+            f'style="left:{_proj_left:.1f}%;width:{_proj_width:.1f}%"></div>'
+            f'<div class="cpt-forecast-now" style="left:{_now_pct:.1f}%"></div>'
+            '</div>'
+            '<div class="cpt-forecast-legend">'
+            '<span><em>█</em> elapsed</span>'
+            '<span><em>▨</em> projected</span>'
+            '<span><em>│</em> now</span>'
+            f'<span>resets · {fmt_time_until(five_h_reset)}</span>'
+            '</div>'
+            f'{_sched_html}'
+            '</div>',
             unsafe_allow_html=True,
         )
 
-    def render_hero_idle():
-        if st.session_state.last_output:
-            last = st.session_state.last_label
-            saved_link = ""
-            if st.session_state.last_saved_path:
-                saved = Path(st.session_state.last_saved_path)
-                uri = obsidian_uri(saved)
-                rel = saved.relative_to(VAULT_PATH).as_posix()
-                saved_link = (
-                    f'<a class="obsidian-link" href="{uri}" target="_blank">◆ open in obsidian · {rel}</a>'
+        # ——— Vault pulse ———
+        pulse_items = list_vault_pulse(6)
+        if pulse_items:
+            pulse_html = '<div class="cpt-pulse-card"><div class="cpt-cat">vault pulse</div>'
+            for it in pulse_items:
+                try:
+                    uri = obsidian_uri(it["path"])
+                except Exception:
+                    uri = "#"
+                pulse_html += (
+                    '<div class="cpt-pulse">'
+                    f'<span class="cpt-verb {it["verb"]}">{it["verb"]}</span>'
+                    '<div class="cpt-pulse-main">'
+                    f'<div class="cpt-pulse-name">'
+                    f'<a href="{uri}" target="_blank" '
+                    'style="color:inherit;text-decoration:none;">'
+                    f'{html_escape(it["name"])}</a></div>'
+                    f'<div class="cpt-pulse-dir">{html_escape(it["dir"])}</div>'
+                    '</div>'
+                    f'<span class="cpt-pulse-ago">{fmt_ago(it["age_sec"])}</span>'
+                    '</div>'
                 )
+            pulse_html += '</div>'
+            st.markdown(pulse_html, unsafe_allow_html=True)
 
-            meta_html = ""
-            if st.session_state.last_cost is not None:
-                cost = st.session_state.last_cost
-                tok_in, tok_out = st.session_state.last_tokens or (None, None)
-                parts = [f'<span class="meta-val">${cost:.4f}</span>']
-                if tok_in is not None:
-                    parts.append(f'<span class="meta-val">{tok_in} in</span>')
-                if tok_out is not None:
-                    parts.append(f'<span class="meta-val">{tok_out} out</span>')
-                meta_html = f'<div class="meta-row">{" · ".join(parts)}</div>'
 
+
+    # ——— MAIN COLUMN ———
+    with col_main:
+        hero_slot = st.empty()
+
+        def render_hero_error():
+            err = st.session_state.last_error or "unknown error"
+            label = (st.session_state.last_label or "skill").lower()
             hero_slot.markdown(
-                f'<div class="hero-card">'
-                f'<div class="hero-label">last run · {last.lower()}</div>'
-                f'<h2 class="hero-headline">complete <em>·</em></h2>'
-                f'{saved_link}'
-                f'{meta_html}'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            hero_slot.markdown(
-                '<div class="hero-card">'
-                '<div class="hero-label">ready</div>'
-                '<h2 class="hero-headline">run a <em>skill</em> to begin'
-                '<span class="cursor-blink">█</span></h2>'
-                '<div style="color: var(--text-mute); font-size: 0.85rem; margin-top: 0.6rem;">'
-                'click a skill · press run · or type any prompt'
-                '</div></div>',
-                unsafe_allow_html=True,
-            )
-
-    def _clear_output():
-        st.session_state.last_output = ""
-        st.session_state.last_error = None
-        st.session_state.last_saved_path = None
-        st.session_state.last_cost = None
-        st.session_state.last_tokens = None
-        st.session_state.last_label = ""
-        st.session_state.last_prompt = None
-
-    # Rendered output (markdown) for last run
-    def render_last_output():
-        has_content = st.session_state.last_output or st.session_state.last_error
-        if has_content and not st.session_state.running:
-            with st.container():
-                col_view, col_rerun, col_toggle, col_clear = st.columns([3, 1, 0.7, 0.7])
-                with col_view:
-                    st.markdown(
-                        '<div class="caption-mono" style="margin-top:0.8rem;">output</div>',
-                        unsafe_allow_html=True,
-                    )
-                with col_rerun:
-                    if st.session_state.last_prompt and st.button(
-                        "↻ rerun", key="btn_rerun", use_container_width=True
-                    ):
-                        start_skill_run(st.session_state.last_label, st.session_state.last_prompt)
-                        st.rerun()
-                with col_toggle:
-                    view_toggle = st.toggle(
-                        "md",
-                        value=st.session_state.output_view_md,
-                        key="view_toggle",
-                        help="toggle markdown / raw",
-                    )
-                    st.session_state.output_view_md = view_toggle
-                with col_clear:
-                    st.button(
-                        "✕",
-                        key="btn_clear_output",
-                        use_container_width=True,
-                        help="clear output",
-                        on_click=_clear_output,
-                    )
-
-                st.markdown('<div class="output-body">', unsafe_allow_html=True)
-                if st.session_state.output_view_md:
-                    st.markdown(st.session_state.last_output)
-                else:
-                    st.code(st.session_state.last_output, language="markdown")
-                st.markdown('</div>', unsafe_allow_html=True)
-
-    # ——— RUNNING STATE: live fragment ———
-    if st.session_state.running:
-        @st.fragment(run_every=0.4)
-        def live_hero_fragment():
-            elapsed = int(time.time() - (RT.get("start_time") or time.time()))
-            phase = RT.get("current_phase") or "starting"
-            text_preview = RT.get("text", "")[-2500:]
-            phase_log = RT.get("phases", [])
-            phase_log_html = ""
-            if phase_log:
-                last_phases = phase_log[-6:]
-                phase_log_html = (
-                    f'<div class="phase-line">phases · '
-                    + " → ".join(
-                        f'<span class="phase-name">{html_escape(pretty_phase(p))}</span>'
-                        for p in last_phases
-                    )
-                    + "</div>"
-                )
-
-            preview_html = (
-                f'<pre class="stream-output">{html_escape(text_preview)}</pre>'
-                if text_preview else ""
-            )
-
-            label = st.session_state.active_skill or "skill"
-            hero_slot.markdown(
-                f'<div class="hero-card running">'
-                f'<div class="hero-label"><span class="pulse-dot small"></span>'
-                f'running · {elapsed}s · {html_escape(pretty_phase(phase))}</div>'
-                f'<h2 class="hero-headline">{html_escape(label.lower())} <em>·</em></h2>'
-                f'{phase_log_html}'
-                f'{preview_html}'
+                f'<div class="hero-card error">'
+                f'<div class="hero-label">failed · {html_escape(label)}</div>'
+                f'<h2 class="hero-headline">run failed <em>·</em></h2>'
+                f'<pre class="error-detail">{html_escape(err)}</pre>'
+                f'<div class="error-hint">check logs or click ↻ rerun below</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
 
-            if RT.get("done"):
+        def render_hero_idle():
+            if st.session_state.last_output:
+                last = st.session_state.last_label
+                saved_link = ""
+                if st.session_state.last_saved_path:
+                    saved = Path(st.session_state.last_saved_path)
+                    uri = obsidian_uri(saved)
+                    rel = saved.relative_to(VAULT_PATH).as_posix()
+                    saved_link = (
+                        f'<a class="obsidian-link" href="{uri}" target="_blank">◆ open in obsidian · {rel}</a>'
+                    )
+
+                meta_html = ""
+                if st.session_state.last_cost is not None:
+                    cost = st.session_state.last_cost
+                    tok_in, tok_out = st.session_state.last_tokens or (None, None)
+                    parts = [f'<span class="meta-val">${cost:.4f}</span>']
+                    if tok_in is not None:
+                        parts.append(f'<span class="meta-val">{tok_in} in</span>')
+                    if tok_out is not None:
+                        parts.append(f'<span class="meta-val">{tok_out} out</span>')
+                    meta_html = f'<div class="meta-row">{" · ".join(parts)}</div>'
+
+                hero_slot.markdown(
+                    f'<div class="hero-card">'
+                    f'<div class="hero-label">last run · {last.lower()}</div>'
+                    f'<h2 class="hero-headline">complete <em>·</em></h2>'
+                    f'{saved_link}'
+                    f'{meta_html}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                hero_slot.markdown(
+                    '<div class="hero-card">'
+                    '<div class="hero-label">ready</div>'
+                    '<h2 class="hero-headline">run a <em>skill</em> to begin'
+                    '<span class="cursor-blink">█</span></h2>'
+                    '<div style="color: var(--text-mute); font-size: 0.85rem; margin-top: 0.6rem;">'
+                    'click a skill · press run · or type any prompt'
+                    '</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+        def _clear_output():
+            st.session_state.last_output = ""
+            st.session_state.last_error = None
+            st.session_state.last_saved_path = None
+            st.session_state.last_cost = None
+            st.session_state.last_tokens = None
+            st.session_state.last_label = ""
+            st.session_state.last_prompt = None
+
+        # Rendered output (markdown) for last run
+        def render_last_output():
+            has_content = st.session_state.last_output or st.session_state.last_error
+            if has_content and not st.session_state.running:
+                with st.container():
+                    col_view, col_rerun, col_toggle, col_clear = st.columns([3, 1, 0.7, 0.7])
+                    with col_view:
+                        st.markdown(
+                            '<div class="caption-mono" style="margin-top:0.8rem;">output</div>',
+                            unsafe_allow_html=True,
+                        )
+                    with col_rerun:
+                        if st.session_state.last_prompt and st.button(
+                            "↻ rerun", key="btn_rerun", use_container_width=True
+                        ):
+                            start_skill_run(st.session_state.last_label, st.session_state.last_prompt)
+                            st.rerun()
+                    with col_toggle:
+                        view_toggle = st.toggle(
+                            "md",
+                            value=st.session_state.output_view_md,
+                            key="view_toggle",
+                            help="toggle markdown / raw",
+                        )
+                        st.session_state.output_view_md = view_toggle
+                    with col_clear:
+                        st.button(
+                            "✕",
+                            key="btn_clear_output",
+                            use_container_width=True,
+                            help="clear output",
+                            on_click=_clear_output,
+                        )
+
+                    st.markdown('<div class="output-body">', unsafe_allow_html=True)
+                    if st.session_state.output_view_md:
+                        st.markdown(st.session_state.last_output)
+                    else:
+                        st.code(st.session_state.last_output, language="markdown")
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+        # ——— RUNNING STATE: live fragment ———
+        if st.session_state.running:
+            @st.fragment(run_every=0.4)
+            def live_hero_fragment():
+                elapsed = int(time.time() - (RT.get("start_time") or time.time()))
+                phase = RT.get("current_phase") or "starting"
+                text_preview = RT.get("text", "")[-2500:]
+                phase_log = RT.get("phases", [])
+                phase_log_html = ""
+                if phase_log:
+                    last_phases = phase_log[-6:]
+                    phase_log_html = (
+                        f'<div class="phase-line">phases · '
+                        + " → ".join(
+                            f'<span class="phase-name">{html_escape(pretty_phase(p))}</span>'
+                            for p in last_phases
+                        )
+                        + "</div>"
+                    )
+
+                preview_html = (
+                    f'<pre class="stream-output">{html_escape(text_preview)}</pre>'
+                    if text_preview else ""
+                )
+
+                label = st.session_state.active_skill or "skill"
+                hero_slot.markdown(
+                    f'<div class="hero-card running">'
+                    f'<div class="hero-label"><span class="pulse-dot small"></span>'
+                    f'running · {elapsed}s · {html_escape(pretty_phase(phase))}</div>'
+                    f'<h2 class="hero-headline">{html_escape(label.lower())} <em>·</em></h2>'
+                    f'{phase_log_html}'
+                    f'{preview_html}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                if RT.get("done"):
+                    finalize_run_if_done(
+                        st.session_state.active_skill or "skill",
+                        st.session_state.active_prompt or "",
+                    )
+                    st.rerun(scope="app")
+
+            live_hero_fragment()
+
+            # Cancel button
+            st.markdown('<div class="cancel-btn">', unsafe_allow_html=True)
+            if st.button("✕ cancel run", key="btn_cancel", use_container_width=False):
+                cancel_current_run()
                 finalize_run_if_done(
                     st.session_state.active_skill or "skill",
                     st.session_state.active_prompt or "",
                 )
-                st.rerun(scope="app")
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        live_hero_fragment()
-
-        # Cancel button
-        st.markdown('<div class="cancel-btn">', unsafe_allow_html=True)
-        if st.button("✕ cancel run", key="btn_cancel", use_container_width=False):
-            cancel_current_run()
-            finalize_run_if_done(
-                st.session_state.active_skill or "skill",
-                st.session_state.active_prompt or "",
-            )
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    else:
-        if st.session_state.last_error:
-            render_hero_error()
         else:
-            render_hero_idle()
-        render_last_output()
+            if st.session_state.last_error:
+                render_hero_error()
+            else:
+                render_hero_idle()
+            render_last_output()
 
-    # ——— UNIFIED PROMPT + SKILL CHIPS (hidden during run — takeover UX) ———
-    if "prompt_input_widget" not in st.session_state:
-        st.session_state.prompt_input_widget = ""
-    if "last_chip_label" not in st.session_state:
-        st.session_state.last_chip_label = None
+        # ——— UNIFIED PROMPT + SKILL CHIPS (hidden during run — takeover UX) ———
+        if "prompt_input_widget" not in st.session_state:
+            st.session_state.prompt_input_widget = ""
+        if "last_chip_label" not in st.session_state:
+            st.session_state.last_chip_label = None
 
-    def _load_chip(template: str, label: str):
-        st.session_state.prompt_input_widget = template
-        st.session_state.last_chip_label = label
+        # Autonomy preamble — wrapped invisibly around every prompt at run time
+        # so users see only the task ("Run /deep-research on: …") not the
+        # boilerplate ("Act autonomously. Do not ask for confirmation…").
+        AUTONOMY_PREAMBLE = (
+            "Act autonomously. Do not ask for confirmation. "
+            "Do not use AskUserQuestion. "
+        )
 
-    def _clear_prompt():
-        st.session_state.prompt_input_widget = ""
-        st.session_state.last_chip_label = None
+        def _strip_preamble(template: str) -> str:
+            t = template.lstrip()
+            if t.startswith(AUTONOMY_PREAMBLE.strip()):
+                # tolerant strip — handle minor whitespace variants
+                return t[len(AUTONOMY_PREAMBLE.strip()):].lstrip()
+            return template
 
-    clicked = None
+        def _wrap_autonomy(text: str) -> str:
+            stripped = text.lstrip()
+            if stripped.startswith(AUTONOMY_PREAMBLE.strip()):
+                return text
+            return AUTONOMY_PREAMBLE + text
 
-    # Query-param chip loader: <a href="?skill=Label"> → load template
-    _skill_q = st.query_params.get("skill")
-    if _skill_q and not st.session_state.running:
-        for _s in SKILLS:
-            if _s["label"] == _skill_q:
-                st.session_state.prompt_input_widget = _s["prompt_template"]
-                st.session_state.last_chip_label = _s["label"]
-                break
-        st.query_params.clear()
+        def _load_chip(template: str, label: str):
+            st.session_state.prompt_input_widget = _strip_preamble(template)
+            st.session_state.last_chip_label = label
 
-    if not st.session_state.running:
-        st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="cpt-cat">prompt</div>', unsafe_allow_html=True)
-        with st.form(key="form_unified", clear_on_submit=False, border=False):
-            prompt_val = st.text_area(
-                "prompt",
-                placeholder="type any prompt, or pick a skill below to load a template…",
-                label_visibility="collapsed",
-                key="prompt_input_widget",
-                height=120,
-            )
-            b1, b2 = st.columns([3, 1])
-            with b1:
-                submit = st.form_submit_button(
-                    "run →",
-                    use_container_width=True,
+        def _fire_trigger(skill: dict):
+            try:
+                res = subprocess.run(
+                    skill["command"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
                 )
-            with b2:
-                cleared = st.form_submit_button(
-                    "clear",
-                    use_container_width=True,
-                    on_click=_clear_prompt,
-                )
-            if submit:
-                text = (prompt_val or "").strip()
-                if not text:
-                    st.warning("prompt empty")
-                elif "{input}" in text:
-                    st.warning("replace {input} placeholder before running")
+                if res.returncode == 0:
+                    st.toast(f"▶ {skill['label']} triggered", icon="✅")
                 else:
-                    label = st.session_state.last_chip_label or "Ad-hoc"
-                    clicked = {"label": label, "prompt": text}
+                    err = (res.stderr or res.stdout or "unknown").strip().splitlines()[-1][:120]
+                    st.toast(f"✗ {skill['label']}: {err}", icon="⚠️")
+            except Exception as e:
+                st.toast(f"✗ {skill['label']}: {e}", icon="⚠️")
 
-        # Skill chips — cpt-skill anchor grid grouped by category
+        def _clear_prompt():
+            st.session_state.prompt_input_widget = ""
+            st.session_state.last_chip_label = None
+
+        clicked = None
+
+
+        # ─── Prompt form (only when idle — running run owns the streaming hero)
+        if not st.session_state.running:
+            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+            st.markdown('<div class="cpt-cat">prompt</div>', unsafe_allow_html=True)
+            with st.form(key="form_unified", clear_on_submit=False, border=False):
+                prompt_val = st.text_area(
+                    "prompt",
+                    placeholder="type any prompt, or pick a skill below to load a template…",
+                    label_visibility="collapsed",
+                    key="prompt_input_widget",
+                    height=120,
+                )
+                b1, b2 = st.columns([3, 1])
+                with b1:
+                    submit = st.form_submit_button(
+                        "run →",
+                        use_container_width=True,
+                    )
+                with b2:
+                    cleared = st.form_submit_button(
+                        "clear",
+                        use_container_width=True,
+                        on_click=_clear_prompt,
+                    )
+                if submit:
+                    text = (prompt_val or "").strip()
+                    if not text:
+                        st.warning("prompt empty")
+                    elif "{input}" in text:
+                        st.warning("replace {input} placeholder before running")
+                    else:
+                        label = st.session_state.last_chip_label or "Ad-hoc"
+                        # Re-wrap with the autonomy preamble before dispatching
+                        # so the CLI still receives the full skill invocation.
+                        clicked = {"label": label, "prompt": _wrap_autonomy(text)}
+
+        # ─── Skill chips — ALWAYS visible.
+        # Click while idle: loads template into prompt box.
+        # Click while a foreground run is active: queues the skill via the
+        # system/queue/ intent contract — runner pool executes concurrently.
+        # Streaming hero stays focused on the foreground run; queued runs
+        # land as new system/runs/<uuid>.md files when complete.
+        # Skills the agentic-os runner can dispatch directly (see ~/.claude/
+        # agentic-os-runner/runner.js switch on intent.skill). Anything outside
+        # this set can't be queued — would error with "unknown or invalid intent".
+        RUNNER_SKILLS = {
+            "morning", "morning-report", "inbox-brief", "deep-research",
+            "content-cascade", "weekly-review", "yt-pipeline", "vault-cleanup",
+            "metrics-pull", "yt-week-review", "plan-today", "plan-tomorrow",
+            "refresh-schedule",
+        }
+
+        def _extract_slash_skill(template: str) -> str | None:
+            """Pull the /skill-name token from a chip's prompt template."""
+            m = re.search(r"/([a-z][a-z0-9_-]*)", template)
+            return m.group(1) if m else None
+
+        def _queue_skill(skill: dict):
+            template = skill.get("prompt_template", "")
+            if "{input}" in template:
+                st.toast(
+                    f"{skill['label']} needs input — wait for current run",
+                    icon="⚠️",
+                )
+                return
+            runner_skill = _extract_slash_skill(template)
+            if not runner_skill or runner_skill not in RUNNER_SKILLS:
+                st.toast(
+                    f"{skill['label']} not queueable — runner doesn't dispatch /{runner_skill or '?'}",
+                    icon="⚠️",
+                )
+                return
+            uid, _ = write_queue_intent(runner_skill, {"source_label": skill["label"]})
+            st.toast(f"queued · {skill['label']} · {uid[:8]}", icon="✅")
+
         st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
-        skills_sorted = sorted(SKILLS, key=lambda s: s.get("category", "other"))
-        _active = st.session_state.last_chip_label
+        if st.session_state.running:
+            st.markdown(
+                '<div class="cpt-cat chip-cat" style="display:flex;align-items:center;gap:8px">'
+                'skills · click to queue alongside current run'
+                '<span class="v2-demo-pill" style="margin-left:auto">parallel</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        _cat_rank = {c: i for i, c in enumerate(SKILL_CATEGORY_ORDER)}
+        _fallback_rank = len(SKILL_CATEGORY_ORDER)
+        skills_sorted = sorted(
+            SKILLS,
+            key=lambda s: (_cat_rank.get(s.get("category", "other"), _fallback_rank),),
+        )
+        _cols_per_row = 4
         for category, group in groupby(skills_sorted, key=lambda s: s.get("category", "other")):
             group_list = list(group)
-            grid_html = (
-                f'<div class="cpt-cat chip-cat">{html_escape(category)}</div>'
-                '<div class="cpt-skill-grid">'
+            st.markdown(
+                f'<div class="cpt-cat chip-cat">{html_escape(category)}</div>',
+                unsafe_allow_html=True,
             )
-            for skill in group_list:
-                loaded = " loaded" if skill["label"] == _active else ""
-                grid_html += (
-                    f'<a class="cpt-skill{loaded}" '
-                    f'href="?skill={quote(skill["label"])}" target="_self" '
-                    f'title="{html_escape(skill["description"])}">'
-                    f'<span class="cpt-skill-name">{html_escape(skill["label"])}</span>'
-                    f'<span class="cpt-skill-desc">{html_escape(skill["description"])}</span>'
-                    '</a>'
-                )
-            grid_html += '</div>'
-            st.markdown(grid_html, unsafe_allow_html=True)
+            for row_start in range(0, len(group_list), _cols_per_row):
+                row = group_list[row_start:row_start + _cols_per_row]
+                cols = st.columns(_cols_per_row, gap="small")
+                for i, skill in enumerate(row):
+                    with cols[i]:
+                        label = skill["label"]
+                        desc = skill["description"]
+                        key = f"chip_{category}_{label}"
+                        if skill.get("disabled"):
+                            st.button(label, key=key, disabled=True,
+                                      use_container_width=True, help=desc)
+                        elif skill.get("trigger"):
+                            st.button(label, key=key, use_container_width=True,
+                                      help=desc, on_click=_fire_trigger, args=(skill,))
+                        elif st.session_state.running:
+                            # Foreground run active → chips queue via runner
+                            st.button(label, key=key, use_container_width=True,
+                                      help=f"queue · {desc}",
+                                      on_click=_queue_skill, args=(skill,))
+                        else:
+                            st.button(label, key=key, use_container_width=True,
+                                      help=desc, on_click=_load_chip,
+                                      args=(skill["prompt_template"], label))
+                for _fill in range(len(row), _cols_per_row):
+                    with cols[_fill]:
+                        st.markdown("&nbsp;", unsafe_allow_html=True)
 
-        # Trigger run
+        # Trigger foreground run from form submit
         if clicked:
             st.session_state.last_label = clicked["label"]
             st.session_state.last_prompt = clicked["prompt"]
             start_skill_run(clicked["label"], clicked["prompt"])
             st.rerun()
+
+
+# ── v2 audience tab — Latest Upload + audience row + YtWeekReview marquee ──
+with audience_tab:
+    if _layout_v == "v2":
+        st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
+
+        # Latest Upload + audience row (per-tab copy)
+        if _enabled_cards.get("latest_upload", True):
+            _latest_aud = read_latest_video()
+            _latest_aud_html = render_latest_upload(_latest_aud)
+            if _latest_aud_html:
+                st.markdown(_latest_aud_html, unsafe_allow_html=True)
+
+        if _enabled_cards.get("audience_row", True):
+            render_audience_row()
+            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+
+        # YtWeekReview marquee
+        if _enabled_cards.get("yt_week_review", True):
+            _ytr = parse_yt_review()
+            render_yt_review_card(_ytr, tab_key="audience")
+
+with research_tab:
+    if _layout_v == "v2":
+        st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
+        if _enabled_cards.get("morning_brief", True):
+            _brief = parse_morning_brief()
+            render_morning_brief(_brief)
