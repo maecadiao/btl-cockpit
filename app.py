@@ -3236,6 +3236,44 @@ METRICS_CSV = VAULT_PATH / "system" / "metrics" / "metrics.csv"
 LAST_PULL_JSON = VAULT_PATH / "system" / "metrics" / "last-pull.json"
 
 
+def read_claude_5h_billable() -> tuple[int | None, str | None]:
+    """Latest claude_code/billable_5h from metrics.csv. Returns (tokens, ts) or (None, None).
+
+    Claude Code 2.1+ writes session usage into per-conversation jsonl logs under
+    ~/.claude/projects/, not the legacy SESSION_META_DIR. The /metrics-pull skill
+    parses Anthropic's billable count + appends a `claude_code/billable_5h` row.
+    Use that as the authoritative TokenBurn source.
+    """
+    if not METRICS_CSV.exists():
+        return None, None
+    latest_val: float | None = None
+    latest_ts: str | None = None
+    try:
+        with METRICS_CSV.open("r", encoding="utf-8") as f:
+            f.readline()  # header
+            for line in f:
+                parts = line.rstrip("\n").split(",")
+                if len(parts) < 5:
+                    continue
+                ts, source, metric, value, status = parts[:5]
+                if source != "claude_code" or metric != "billable_5h":
+                    continue
+                if status not in ("ok", "mock"):
+                    continue
+                try:
+                    val = float(value)
+                except ValueError:
+                    continue
+                if latest_ts is None or ts > latest_ts:
+                    latest_ts = ts
+                    latest_val = val
+    except OSError:
+        return None, None
+    if latest_val is None:
+        return None, None
+    return int(latest_val), latest_ts
+
+
 def read_audience_metrics() -> dict:
     """Return latest value per (source, metric) from metrics.csv. Falls back to DEMO_AUDIENCE."""
     demo_on = getattr(_cfg, "DEMO_MODE", False)
@@ -4068,6 +4106,12 @@ five_h_reset = (rate_limits.get("five_hour") or {}).get("resets_at")
 week_reset = (rate_limits.get("weekly") or {}).get("resets_at")
 
 five_h_tokens = usage["five_hour"]["total"]
+# Prefer metrics.csv `claude_code/billable_5h` row when present — that's the
+# authoritative Anthropic-billed 5h count (matches claude.ai dev page).
+# Falls back to legacy session-meta scan when no metrics-pull row exists.
+_billable_5h, _billable_ts = read_claude_5h_billable()
+if _billable_5h is not None and not getattr(_cfg, "DEMO_MODE", False):
+    five_h_tokens = _billable_5h
 week_tokens = usage["weekly"]["total"]
 routines_today = usage["today"]["routines"]
 today_runs = usage["today"]["runs"]
