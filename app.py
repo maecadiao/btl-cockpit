@@ -1620,14 +1620,14 @@ V2_CSS = r"""
 
 /* ── TokenBurn marquee (mirrors Obsidian cockpit) ───────────── */
 .v2-tb-wrap {
-    --tb-tone: 201, 100, 66;
-    --tb-fill-stop-mid: var(--cc-accent);
-    --tb-fill-stop-end: #ff8a5c;
+    --tb-tone: 219, 116, 70;
+    --tb-fill-stop-mid: #e07a48;
+    --tb-fill-stop-end: #ff9a5c;
     position: relative;
     background:
-        linear-gradient(180deg, rgba(201, 100, 66, 0.10), rgba(201, 100, 66, 0.02) 60%, transparent 100%),
+        linear-gradient(180deg, rgba(219, 116, 70, 0.14), rgba(219, 116, 70, 0.04) 60%, transparent 100%),
         var(--bg-card);
-    border: 1px solid rgba(201, 100, 66, 0.28);
+    border: 1px solid rgba(219, 116, 70, 0.40);
     border-radius: 3px;
     padding: 16px 22px 14px;
     margin: 6px 0 10px 0;
@@ -1635,6 +1635,7 @@ V2_CSS = r"""
     flex-direction: column;
     gap: 14px;
     overflow: hidden;
+    box-shadow: 0 0 24px -10px rgba(219, 116, 70, 0.40);
 }
 .v2-tb-wrap::after {
     content: "";
@@ -1724,9 +1725,9 @@ V2_CSS = r"""
     display: flex;
     align-items: baseline;
     gap: 2px;
-    color: var(--cc-accent);
+    color: #e07a48;
     font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 14px rgba(201, 100, 66, 0.35);
+    text-shadow: 0 0 18px rgba(255, 138, 92, 0.55);
     font-family: 'JetBrains Mono', monospace;
 }
 .v2-tb-pct-num {
@@ -1737,7 +1738,7 @@ V2_CSS = r"""
 }
 .v2-tb-pct-unit {
     font-size: 22px;
-    color: rgba(201, 100, 66, 0.7);
+    color: rgba(224, 122, 72, 0.75);
     font-weight: 500;
 }
 .v2-tb-bar-wrap {
@@ -1750,7 +1751,7 @@ V2_CSS = r"""
     position: relative;
     height: 38px;
     border-radius: 2px;
-    overflow: visible;
+    overflow: hidden;
     isolation: isolate;
     background:
         repeating-linear-gradient(
@@ -1784,11 +1785,11 @@ V2_CSS = r"""
     left: 0; top: 0; bottom: 0;
     border-radius: 2px 0 0 2px;
     background:
-        linear-gradient(180deg, rgba(255, 211, 181, 0.20) 0%, transparent 35%),
-        linear-gradient(90deg, rgba(var(--tb-tone), 0.55) 0%, var(--tb-fill-stop-mid) 80%, var(--tb-fill-stop-end) 100%);
+        linear-gradient(180deg, rgba(255, 211, 181, 0.28) 0%, transparent 40%),
+        linear-gradient(90deg, rgba(var(--tb-tone), 0.70) 0%, var(--tb-fill-stop-mid) 75%, var(--tb-fill-stop-end) 100%);
     box-shadow:
-        inset 0 0 12px rgba(255, 138, 92, 0.35),
-        0 0 18px rgba(var(--tb-tone), 0.35);
+        inset 0 0 14px rgba(255, 154, 92, 0.50),
+        0 0 22px rgba(var(--tb-tone), 0.50);
     transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     z-index: 2;
@@ -1845,10 +1846,11 @@ V2_CSS = r"""
 }
 .v2-tb-endpoint {
     position: absolute;
-    top: -6px; bottom: -6px;
+    top: 0; bottom: 0;
     width: 2px;
     margin-left: -1px;
-    background: linear-gradient(180deg, transparent, var(--cc-accent) 20%, var(--cc-accent) 80%, transparent);
+    background: linear-gradient(180deg, rgba(255, 211, 181, 0.8), var(--cc-accent) 40%, var(--cc-accent) 60%, rgba(255, 211, 181, 0.8));
+    box-shadow: 0 0 8px rgba(255, 138, 92, 0.6);
     pointer-events: none;
     z-index: 4;
 }
@@ -2082,6 +2084,53 @@ V2_CSS = r"""
 }
 .v2-driver-row.done .v2-driver-box { background: var(--cc-accent); color: var(--bg); border-color: var(--cc-accent); }
 .v2-driver-row.done .v2-driver-label { color: var(--cc-fg-2); text-decoration: line-through; }
+
+/* Native st.checkbox style override for Daily Drivers — write-back enabled. */
+.v2-panel-drivers-head {
+    /* the panel-head card sits directly above the checkbox stack so they read as one block */
+    margin-bottom: 6px !important;
+    padding-bottom: 8px;
+}
+[data-testid="stCheckbox"] {
+    padding: 4px 0 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+[data-testid="stCheckbox"] label {
+    font-size: 12px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    color: var(--cc-fg-0) !important;
+    align-items: center !important;
+    gap: 10px !important;
+}
+[data-testid="stCheckbox"] label p {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    color: var(--cc-fg-0) !important;
+    margin: 0 !important;
+}
+[data-testid="stCheckbox"] label > div:first-child {
+    margin-right: 0 !important;
+}
+/* The square */
+[data-testid="stCheckbox"] [role="checkbox"],
+[data-testid="stCheckbox"] [data-baseweb="checkbox"] > div:first-child {
+    width: 14px !important;
+    height: 14px !important;
+    min-width: 14px !important;
+    border-radius: 2px !important;
+    border: 1px solid var(--cc-ring-strong) !important;
+    background: transparent !important;
+}
+[data-testid="stCheckbox"] [aria-checked="true"],
+[data-testid="stCheckbox"] [data-baseweb="checkbox"] > div[data-checked="true"] {
+    background: var(--cc-accent) !important;
+    border-color: var(--cc-accent) !important;
+}
+[data-testid="stCheckbox"] [aria-checked="true"] + div p,
+[data-testid="stCheckbox"]:has([aria-checked="true"]) label p {
+    color: var(--cc-fg-2) !important;
+    text-decoration: line-through;
+}
 
 /* ── Demo-mode pill ───────────────────────────────────────── */
 .v2-demo-pill {
@@ -3703,24 +3752,75 @@ def render_schedule_panel(events: list[dict]) -> str:
     )
 
 
-def render_daily_drivers_panel(drivers: list[dict]) -> str:
-    if not drivers:
-        body = '<div style="color:var(--fg-mute);font-size:0.78rem">no drivers seeded today</div>'
+def toggle_driver_in_note(date_iso: str, idx: int, new_state: bool) -> bool:
+    """Flip the idx-th `- [ ]` ↔ `- [x]` bullet in today's Daily Drivers section.
+
+    Returns True on success. Idempotent — runs the file edit even if state already matches.
+    """
+    note = DAILY_NOTES_DIR / f"{date_iso}.md"
+    if not note.exists():
+        return False
+    text = note.read_text(encoding="utf-8")
+    m = re.search(r"(##\s+Daily Drivers\s*\n)(.*?)(?=\n##\s|\Z)", text, re.DOTALL)
+    if not m:
+        return False
+    head_end = m.end(1)
+    section_start = m.start(2)
+    section = m.group(2)
+    lines = section.split("\n")
+    bullet_positions: list[int] = []
+    for i, line in enumerate(lines):
+        if re.match(r"-\s+\[[ xX]\]\s+", line.strip()):
+            bullet_positions.append(i)
+    if idx >= len(bullet_positions):
+        return False
+    li = bullet_positions[idx]
+    line = lines[li]
+    if new_state:
+        line = re.sub(r"\[[ ]\]", "[x]", line, count=1)
     else:
-        rows = "".join(
-            f'<div class="v2-driver-row{" done" if d["done"] else ""}">'
-            f'<span class="v2-driver-box">{"✓" if d["done"] else ""}</span>'
-            f'<span class="v2-driver-label">{html_escape(d["label"])}</span></div>'
-            for d in drivers
-        )
-        body = rows
-    return (
-        '<div class="v2-panel">'
+        line = re.sub(r"\[[xX]\]", "[ ]", line, count=1)
+    lines[li] = line
+    new_section = "\n".join(lines)
+    new_text = text[:section_start] + new_section + text[section_start + len(section):]
+    note.write_text(new_text, encoding="utf-8")
+    return True
+
+
+def render_daily_drivers_widget(drivers: list[dict], date_iso: str) -> None:
+    """Native st.checkbox renderer — toggling writes back to the daily note.
+
+    Replaces the read-only HTML renderer so Streamlit gains parity with Obsidian's
+    inline checkbox interaction.
+    """
+    st.markdown(
+        '<div class="v2-panel v2-panel-drivers-head">'
         '<div class="v2-panel-head">§ DAILY DRIVERS</div>'
-        f'{body}'
-        '<div style="color:var(--fg-mute);font-size:0.6rem;margin-top:0.4rem;letter-spacing:0.1em">'
-        'READ-ONLY · TOGGLE IN OBSIDIAN'
-        '</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    if not drivers:
+        st.markdown(
+            '<div style="color:var(--cc-fg-2);font-size:12px;padding:4px 0">no drivers seeded today</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.markdown('<div class="v2-driver-stack-marker"></div>', unsafe_allow_html=True)
+    for idx, d in enumerate(drivers):
+        key = f"drv_{date_iso}_{idx}"
+        if key not in st.session_state:
+            st.session_state[key] = d["done"]
+
+        def _on_change(_idx=idx, _key=key, _date=date_iso):
+            toggle_driver_in_note(_date, _idx, bool(st.session_state.get(_key, False)))
+
+        st.checkbox(d["label"], key=key, on_change=_on_change)
+
+    st.markdown(
+        '<div style="color:var(--cc-fg-2);font-size:9px;letter-spacing:0.18em;'
+        'margin-top:6px;text-transform:uppercase">writes back to daily note</div>',
+        unsafe_allow_html=True,
     )
 
 
@@ -3919,18 +4019,19 @@ else:
 
 with overview_tab:
 
-    # ── Schedule + Daily Drivers (2-col, read-only) ───────────
+    # ── Schedule + Daily Drivers (2-col) ──────────────────────
     _show_sched = _enabled_cards.get("schedule", True)
     _show_drv = _enabled_cards.get("daily_drivers", True)
     if _show_sched or _show_drv:
-        _daily = parse_daily_note()
+        _today_iso = date.today().isoformat()
+        _daily = parse_daily_note(_today_iso)
         _sd_cols = st.columns(2, gap="small")
         with _sd_cols[0]:
             if _show_sched:
                 st.markdown(render_schedule_panel(_daily["schedule"]), unsafe_allow_html=True)
         with _sd_cols[1]:
             if _show_drv:
-                st.markdown(render_daily_drivers_panel(_daily["drivers"]), unsafe_allow_html=True)
+                render_daily_drivers_widget(_daily["drivers"], _today_iso)
         st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
     col_main, col_side = st.columns([2.6, 1], gap="large")
