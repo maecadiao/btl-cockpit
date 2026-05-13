@@ -4704,8 +4704,29 @@ with overview_tab:
         if "last_chip_label" not in st.session_state:
             st.session_state.last_chip_label = None
 
+        # Autonomy preamble — wrapped invisibly around every prompt at run time
+        # so users see only the task ("Run /deep-research on: …") not the
+        # boilerplate ("Act autonomously. Do not ask for confirmation…").
+        AUTONOMY_PREAMBLE = (
+            "Act autonomously. Do not ask for confirmation. "
+            "Do not use AskUserQuestion. "
+        )
+
+        def _strip_preamble(template: str) -> str:
+            t = template.lstrip()
+            if t.startswith(AUTONOMY_PREAMBLE.strip()):
+                # tolerant strip — handle minor whitespace variants
+                return t[len(AUTONOMY_PREAMBLE.strip()):].lstrip()
+            return template
+
+        def _wrap_autonomy(text: str) -> str:
+            stripped = text.lstrip()
+            if stripped.startswith(AUTONOMY_PREAMBLE.strip()):
+                return text
+            return AUTONOMY_PREAMBLE + text
+
         def _load_chip(template: str, label: str):
-            st.session_state.prompt_input_widget = template
+            st.session_state.prompt_input_widget = _strip_preamble(template)
             st.session_state.last_chip_label = label
 
         def _fire_trigger(skill: dict):
@@ -4763,7 +4784,9 @@ with overview_tab:
                         st.warning("replace {input} placeholder before running")
                     else:
                         label = st.session_state.last_chip_label or "Ad-hoc"
-                        clicked = {"label": label, "prompt": text}
+                        # Re-wrap with the autonomy preamble before dispatching
+                        # so the CLI still receives the full skill invocation.
+                        clicked = {"label": label, "prompt": _wrap_autonomy(text)}
 
             # Skill chips — st.button grid (no page reload, WebSocket rerun)
             st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
