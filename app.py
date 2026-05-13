@@ -3644,12 +3644,17 @@ QUEUE_DIR = VAULT_PATH / "system" / "queue"
 RUNS_BG_DIR = VAULT_PATH / "system" / "runs"
 
 
-def read_queue_state(recent_window_min: int = 30) -> list[dict]:
+def read_queue_state(recent_window_min: int = 30, include_errors: bool = False) -> list[dict]:
     """Return pending + active + recently-completed background runs.
 
     Sources:
       - system/queue/<uuid>.json  — pending intents (runner hasn't picked up)
       - system/runs/<uuid>.json   — runner-tracked runs (queued/running/ok/err)
+
+    include_errors=False hides failed runs from the live panel so demos
+    + recordings don't show a wall of red. Failed JSON+md files stay on
+    disk for debugging — flip the flag (or open system/runs/ in Obsidian)
+    to inspect them.
     """
     items: list[dict] = []
     now = datetime.now()
@@ -3706,6 +3711,9 @@ def read_queue_state(recent_window_min: int = 30) -> list[dict]:
                     elapsed = int((datetime.now(sdt.tzinfo) - sdt).total_seconds())
                 if status == "ok":
                     status = "running"  # safety net if file lacks ts_completed
+            # Skip failed records from the display when include_errors is off.
+            if status in ("error", "err", "failed") and not include_errors:
+                continue
             # Runner records deliverable_path relative to vault root, e.g.
             # "inbox/reports/inbox-briefs/2026-05-13-abc.md". Pass through so the
             # queue panel can link to the ACTUAL output, not the runner log.
