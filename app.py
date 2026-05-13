@@ -1507,41 +1507,46 @@ V2_CSS = r"""
     padding-right: 6px !important;
 }
 
-/* Terracotta atmosphere — crosshatch + grid + radial halos break the flat black */
+/* Terracotta atmosphere — visible crosshatch + grid + radial halos */
 .stApp {
     background:
-        /* primary 45° crosshatch — visible technical grid */
+        /* primary 45° crosshatch — clearly visible technical grid */
         repeating-linear-gradient(
             45deg,
-            rgba(219, 116, 70, 0.045) 0,
-            rgba(219, 116, 70, 0.045) 1px,
+            rgba(219, 116, 70, 0.11) 0,
+            rgba(219, 116, 70, 0.11) 1px,
             transparent 1px,
-            transparent 14px
+            transparent 16px
         ),
-        /* counter-hatch at -45° at lower alpha */
+        /* counter-hatch at -45° */
         repeating-linear-gradient(
             -45deg,
-            rgba(219, 116, 70, 0.028) 0,
-            rgba(219, 116, 70, 0.028) 1px,
+            rgba(219, 116, 70, 0.075) 0,
+            rgba(219, 116, 70, 0.075) 1px,
             transparent 1px,
-            transparent 14px
+            transparent 16px
         ),
-        /* faint horizontal scanlines layered on top */
+        /* horizontal scanlines */
         repeating-linear-gradient(
             0deg,
-            rgba(255, 138, 92, 0.012) 0,
-            rgba(255, 138, 92, 0.012) 1px,
+            rgba(255, 138, 92, 0.028) 0,
+            rgba(255, 138, 92, 0.028) 1px,
             transparent 1px,
-            transparent 3px
+            transparent 4px
         ),
         /* top halo behind header */
-        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(219, 116, 70, 0.10) 0%, transparent 65%),
+        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(219, 116, 70, 0.18) 0%, transparent 65%),
         /* bottom-left ambient warmth */
-        radial-gradient(circle at 0% 100%, rgba(201, 100, 66, 0.07) 0%, transparent 45%),
+        radial-gradient(circle at 0% 100%, rgba(201, 100, 66, 0.14) 0%, transparent 50%),
         /* bottom-right ambient warmth */
-        radial-gradient(circle at 100% 100%, rgba(219, 116, 70, 0.06) 0%, transparent 45%),
+        radial-gradient(circle at 100% 100%, rgba(219, 116, 70, 0.12) 0%, transparent 50%),
         var(--bg) !important;
     background-attachment: fixed !important;
+}
+/* Card backgrounds opaque-ish so the texture doesn't bleed through */
+.v2-latest, .v2-audience-card, .v2-tb-wrap, .v2-ytr-card,
+.v2-mb-tile, .v2-panel, .v2-perf-card {
+    backdrop-filter: blur(2px);
 }
 
 /* ── Latest Upload card ───────────────────────────────────── */
