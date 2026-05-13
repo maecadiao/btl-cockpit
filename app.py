@@ -3094,7 +3094,7 @@ if _action_q == "terminal":
 elif _action_q == "pull-latest":
     try:
         uid, _ = write_queue_intent("metrics-pull")
-        st.toast(f"queued metrics-pull · {uid[:8]}", icon="✓")
+        st.toast(f"queued metrics-pull · {uid[:8]}", icon="✅")
     except Exception as e:
         st.toast(f"pull failed: {e}", icon="⚠️")
     st.query_params.clear()
@@ -3697,7 +3697,7 @@ def render_yt_review_card(review: dict | None, tab_key: str = "audience") -> Non
         )
         if st.button("▶ RUN /yt-week-review", key=f"ytr_run_empty_{tab_key}"):
             uid, _ = write_queue_intent("yt-week-review")
-            st.toast(f"queued · {uid[:8]}", icon="✓")
+            st.toast(f"queued · {uid[:8]}", icon="✅")
         return
 
     window = html_escape(review.get("window") or "")
@@ -3796,7 +3796,7 @@ def render_yt_review_card(review: dict | None, tab_key: str = "audience") -> Non
 
     if st.button("▶ RUN /yt-week-review (fresh)", key=f"ytr_run_{tab_key}"):
         uid, _ = write_queue_intent("yt-week-review")
-        st.toast(f"queued · {uid[:8]}", icon="✓")
+        st.toast(f"queued · {uid[:8]}", icon="✅")
 
 
 # ── MorningBrief parser + renderer (commit 8) ──────────────
@@ -4736,12 +4736,12 @@ with overview_tab:
                     check=False,
                 )
                 if res.returncode == 0:
-                    st.toast(f"▶ {skill['label']} triggered", icon="✓")
+                    st.toast(f"▶ {skill['label']} triggered", icon="✅")
                 else:
                     err = (res.stderr or res.stdout or "unknown").strip().splitlines()[-1][:120]
-                    st.toast(f"✗ {skill['label']}: {err}", icon="⚠")
+                    st.toast(f"✗ {skill['label']}: {err}", icon="⚠️")
             except Exception as e:
-                st.toast(f"✗ {skill['label']}: {e}", icon="⚠")
+                st.toast(f"✗ {skill['label']}: {e}", icon="⚠️")
 
         def _clear_prompt():
             st.session_state.prompt_input_widget = ""
@@ -4797,7 +4797,7 @@ with overview_tab:
             if "{input}" in template:
                 st.toast(
                     f"{skill['label']} needs input — wait for current run to finish",
-                    icon="⚠",
+                    icon="⚠️",
                 )
                 return
             full_prompt = _wrap_autonomy(template) if template else ""
@@ -4805,7 +4805,7 @@ with overview_tab:
                 "ad-hoc",
                 {"label": skill["label"], "prompt": full_prompt},
             )
-            st.toast(f"queued · {skill['label']} · {uid[:8]}", icon="✓")
+            st.toast(f"queued · {skill['label']} · {uid[:8]}", icon="✅")
 
         st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
         if st.session_state.running:
