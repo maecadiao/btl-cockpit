@@ -3114,6 +3114,237 @@ def render_tokenburn_meter(used: int, budget: int, reset_at: float | None, last_
     )
 
 
+# ── YtWeekReview parser + renderer (commit 7) ──────────────
+import uuid as _uuid
+
+YT_REVIEWS_DIR = VAULT_PATH / "inbox" / "reports" / "yt-reviews"
+QUEUE_DIR = VAULT_PATH / "system" / "queue"
+
+
+def _latest_in_dir(dir_path: Path, glob: str = "*.md") -> Path | None:
+    if not dir_path.exists():
+        return None
+    files = sorted(
+        (p for p in dir_path.glob(glob) if not p.name.startswith("_")),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return files[0] if files else None
+
+
+def parse_yt_review(path: Path | None = None) -> dict | None:
+    """Parse the latest yt-week-review markdown. Returns dict with tldr, uploads, top, under, window."""
+    if path is None:
+        path = _latest_in_dir(YT_REVIEWS_DIR)
+    if not path or not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8", errors="replace")
+
+    # Frontmatter
+    meta: dict = {"path": str(path), "name": path.name}
+    fm_match = _FRONTMATTER_RE.match(text)
+    if fm_match:
+        for line in fm_match.group(1).splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                meta[k.strip()] = v.strip()
+    body = text[fm_match.end():] if fm_match else text
+
+    # TL;DR — bullet list under ## TL;DR
+    tldr: list[str] = []
+    m = re.search(r"## TL;DR\s*\n(.*?)(?=\n##\s|\Z)", body, re.DOTALL)
+    if m:
+        for line in m.group(1).splitlines():
+            line = line.strip()
+            if line.startswith("- "):
+                tldr.append(line[2:])
+
+    # Uploads table — markdown table with headers Title | Views | vs Baseline | Likes | Comments | Verdict
+    uploads: list[dict] = []
+    m = re.search(r"## Uploads this week\s*\n(.*?)(?=\n##\s|\Z)", body, re.DOTALL)
+    if m:
+        for line in m.group(1).splitlines():
+            if not line.startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if not cells or cells[0].lower().startswith("video") or set(cells[0]) <= {"-", ":"}:
+                continue
+            if len(cells) < 6:
+                continue
+            try:
+                views = int(cells[1].replace(",", ""))
+            except ValueError:
+                continue
+            uploads.append({
+                "title": cells[0],
+                "views": views,
+                "vs_baseline": cells[2],
+                "likes": cells[3],
+                "comments": cells[4],
+                "verdict": cells[5],
+            })
+
+    # Top performer + underperformer headlines
+    def _section(heading: str) -> str:
+        m = re.search(rf"## {re.escape(heading)} — (.+?)\n(.*?)(?=\n##\s|\Z)", body, re.DOTALL)
+        if not m:
+            return ""
+        title = m.group(1).strip()
+        return title
+
+    top = _section("Top performer")
+    under = _section("Underperformer")
+
+    return {
+        "meta": meta,
+        "window": meta.get("window") or meta.get("date") or "",
+        "tldr": tldr,
+        "uploads": uploads,
+        "top": top,
+        "under": under,
+    }
+
+
+def write_queue_intent(skill: str, args: dict | None = None) -> tuple[str, Path]:
+    """Drop an intent JSON into system/queue/. Runner picks it up."""
+    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+    uid = str(_uuid.uuid4())
+    path = QUEUE_DIR / f"{uid}.json"
+    payload = {
+        "id": uid,
+        "skill": skill,
+        "args": args or {},
+        "ts_queued": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "source": "streamlit",
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return uid, path
+
+
+_VERDICT_TONE = {
+    "hit":      "hit",
+    "steady":   "steady",
+    "climbing": "climbing",
+    "miss":     "miss",
+}
+
+
+def render_yt_review_card(review: dict | None, tab_key: str = "audience") -> None:
+    """Render YtWeekReview marquee directly into the current Streamlit context."""
+    if not review:
+        # Empty state — prominent RUN NEW button
+        st.markdown(
+            '<div class="v2-ytr-card">'
+            '<div class="v2-ytr-head"><span class="v2-ytr-title">YT WEEK REVIEW</span></div>'
+            '<div style="color:var(--fg-mute);font-size:0.78rem;margin:0.6rem 0">'
+            'No review on file yet. Run the skill to generate the first one.'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("▶ RUN /yt-week-review", key=f"ytr_run_empty_{tab_key}"):
+            uid, _ = write_queue_intent("yt-week-review")
+            st.toast(f"queued · {uid[:8]}", icon="✓")
+        return
+
+    window = html_escape(review.get("window") or "")
+    review_path = Path(review["meta"].get("path", ""))
+    full_uri = obsidian_uri(review_path) if review_path.exists() else "#"
+
+    # Header — title + actions row
+    st.markdown(
+        '<div class="v2-ytr-card">'
+        '<div class="v2-ytr-head">'
+        f'<span class="v2-ytr-title">YT WEEK REVIEW · {window}</span>'
+        '<span class="v2-ytr-actions">'
+        f'<a href="{full_uri}" target="_blank">FULL ↗</a>'
+        '</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    # TL;DR
+    tldr = review.get("tldr") or []
+    if tldr:
+        bullets = "".join(f"<li>{html_escape(b)}</li>" for b in tldr[:4])
+        st.markdown(f'<ul class="v2-ytr-tldr">{bullets}</ul>', unsafe_allow_html=True)
+
+    # Verdict chip row
+    uploads = review.get("uploads") or []
+    verdict_counts: dict[str, int] = {}
+    for u in uploads:
+        v = (u.get("verdict") or "").lower()
+        verdict_counts[v] = verdict_counts.get(v, 0) + 1
+    chip_html = '<div class="v2-chip-row">'
+    for v in ("hit", "climbing", "steady", "miss"):
+        n = verdict_counts.get(v, 0)
+        tone = _VERDICT_TONE.get(v, "steady")
+        chip_html += f'<span class="v2-chip {tone}">{v.upper()} {n}</span>'
+    chip_html += '</div>'
+    st.markdown(chip_html, unsafe_allow_html=True)
+
+    # Bar chart of per-video views (Altair, color by verdict)
+    if uploads:
+        df_up = pd.DataFrame([
+            {
+                "title": (u["title"][:38] + "…") if len(u["title"]) > 38 else u["title"],
+                "views": u["views"],
+                "verdict": (u.get("verdict") or "Steady").capitalize(),
+            }
+            for u in uploads
+        ])
+        verdict_colors = {
+            "Hit":       "#8fb97a",
+            "Climbing":  "#d9a566",
+            "Steady":    "#b0aea5",
+            "Miss":      "#c96442",
+        }
+        chart = (
+            alt.Chart(df_up)
+            .mark_bar(cornerRadiusEnd=2)
+            .encode(
+                y=alt.Y("title:N", sort="-x", axis=alt.Axis(title=None, labelFontSize=10, labelLimit=300, labelColor="#b0aea5")),
+                x=alt.X("views:Q", axis=alt.Axis(title=None, labelFontSize=9, format="~s", labelColor="#87867f", grid=False)),
+                color=alt.Color(
+                    "verdict:N",
+                    scale=alt.Scale(
+                        domain=list(verdict_colors.keys()),
+                        range=list(verdict_colors.values()),
+                    ),
+                    legend=None,
+                ),
+                tooltip=["title", "views", "verdict"],
+            )
+            .properties(height=max(110, 26 * len(uploads)), background="transparent")
+            .configure_view(strokeWidth=0)
+            .configure_axis(domain=False, tickColor="#3a3937")
+        )
+        st.altair_chart(chart, use_container_width=True)
+
+    # Top performer + underperformer mini-cards
+    top = review.get("top") or ""
+    under = review.get("under") or ""
+    perfs_html = '<div class="v2-ytr-perfs">'
+    if top:
+        perfs_html += (
+            '<div class="v2-perf-card top">'
+            '<div class="v2-perf-label">TOP PERFORMER</div>'
+            f'<div class="v2-perf-title">{html_escape(top)}</div>'
+            '</div>'
+        )
+    if under:
+        perfs_html += (
+            '<div class="v2-perf-card under">'
+            '<div class="v2-perf-label">UNDERPERFORMER</div>'
+            f'<div class="v2-perf-title">{html_escape(under)}</div>'
+            '</div>'
+        )
+    perfs_html += '</div></div>'
+    st.markdown(perfs_html, unsafe_allow_html=True)
+
+    if st.button("▶ RUN /yt-week-review (fresh)", key=f"ytr_run_{tab_key}"):
+        uid, _ = write_queue_intent("yt-week-review")
+        st.toast(f"queued · {uid[:8]}", icon="✓")
+
+
 five_h_reset = (rate_limits.get("five_hour") or {}).get("resets_at")
 week_reset = (rate_limits.get("weekly") or {}).get("resets_at")
 
@@ -3855,18 +4086,26 @@ with overview_tab:
                 st.rerun()
 
 
-# ── v2 audience tab — placeholder; commits 7 fills marquee + filtered skills ──
+# ── v2 audience tab — Latest Upload + audience row + YtWeekReview marquee ──
 with audience_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="v2-panel"><div class="v2-panel-head">audience marquee · coming in commit 7</div>'
-            '<div style="color:var(--fg-mute);font-size:0.78rem">'
-            'YtWeekReview card lands here — verdict chips, top/under performer cards, '
-            'bar-chart of per-video views, RUN NEW button writing intent JSON to system/queue/.'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
+
+        # Latest Upload + audience row (per-tab copy)
+        if _enabled_cards.get("latest_upload", True):
+            _latest_aud = read_latest_video()
+            _latest_aud_html = render_latest_upload(_latest_aud)
+            if _latest_aud_html:
+                st.markdown(_latest_aud_html, unsafe_allow_html=True)
+
+        if _enabled_cards.get("audience_row", True):
+            render_audience_row()
+            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+
+        # YtWeekReview marquee
+        if _enabled_cards.get("yt_week_review", True):
+            _ytr = parse_yt_review()
+            render_yt_review_card(_ytr, tab_key="audience")
 
 with research_tab:
     if _layout_v == "v2":
