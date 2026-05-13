@@ -1418,44 +1418,39 @@ BOOT_ANIMATION_CSS = """
     animation: boot-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.95s both;
 }
 
-/* ── TokenBurn boot sequence ─────────────────────────────── */
-@keyframes v2-tb-wrap-boot {
-    0%   { opacity: 0; transform: translateY(14px) scale(0.985); }
-    100% { opacity: 1; transform: translateY(0) scale(1); }
+/* ── v2 card boot sequence — single smooth rise + staggered cascade ──
+   One keyframe (boot-rise-soft), staggered per card via delay only.
+   Fewer competing animations = no stutter. */
+@keyframes boot-rise-soft {
+    0%   { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
 }
-@keyframes v2-tb-corner-boot {
-    0%   { opacity: 0; transform: scale(0.3); }
-    100% { opacity: 0.7; transform: scale(1); }
-}
-@keyframes v2-tb-fill-boot {
+@keyframes boot-fill-sweep {
     0%   { clip-path: inset(0 100% 0 0); }
     100% { clip-path: inset(0 0 0 0); }
 }
-@keyframes v2-tb-pct-boot {
-    0%   { opacity: 0; transform: scale(0.72); filter: blur(8px); }
-    60%  { opacity: 1; filter: blur(0); }
-    100% { opacity: 1; transform: scale(1); filter: blur(0); }
+@keyframes boot-pct-pop {
+    0%   { opacity: 0; transform: scale(0.85); }
+    100% { opacity: 1; transform: scale(1); }
 }
-@keyframes v2-tb-header-boot {
-    0%   { opacity: 0; transform: translateY(-6px); }
-    100% { opacity: 1; transform: translateY(0); }
-}
-@keyframes v2-tb-counts-boot {
-    0%, 40% { opacity: 0; transform: translateX(8px); }
-    100%    { opacity: 1; transform: translateX(0); }
-}
-@keyframes v2-tb-endpoint-boot {
-    0%, 70% { opacity: 0; }
-    100%    { opacity: 1; }
-}
-.v2-tb-wrap    { animation: v2-tb-wrap-boot   0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
-.v2-tb-corner  { animation: v2-tb-corner-boot 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both; }
-.v2-tb-head    { animation: v2-tb-header-boot 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both; }
-.v2-tb-fill    { animation: v2-tb-fill-boot   1.10s cubic-bezier(0.4, 0, 0.2, 1) 0.45s both; }
-.v2-tb-pct     { animation: v2-tb-pct-boot    0.7s  cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s both; }
-.v2-tb-endpoint, .v2-tb-comet, .v2-tb-proj { animation: v2-tb-endpoint-boot 1.6s ease-out 0s both; }
-.v2-tb-counts  { animation: v2-tb-counts-boot 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0s both; }
-.v2-tb-ticks   { animation: v2-tb-counts-boot 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0s both; }
+
+/* TokenBurn — wrap rises whole, only fill sweeps + pct pops to draw the eye */
+.v2-tb-wrap   { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
+.v2-tb-fill   { animation: boot-fill-sweep 0.95s cubic-bezier(0.4, 0, 0.2, 1) 0.50s both; }
+.v2-tb-pct    { animation: boot-pct-pop    0.50s cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s both; }
+
+/* Audience row + Latest Upload + marquees + panels — cascading rise */
+.v2-latest                { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both; }
+.v2-audience-card         { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.35s both; }
+[data-testid="column"]:nth-of-type(1) .v2-audience-card { animation-delay: 0.30s; }
+[data-testid="column"]:nth-of-type(2) .v2-audience-card { animation-delay: 0.36s; }
+[data-testid="column"]:nth-of-type(3) .v2-audience-card { animation-delay: 0.42s; }
+[data-testid="column"]:nth-of-type(4) .v2-audience-card { animation-delay: 0.48s; }
+.v2-ytr-card              { animation: boot-rise-soft 0.60s cubic-bezier(0.22, 1, 0.36, 1) 0.40s both; }
+.v2-mb-grid               { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both; }
+.v2-mb-coverage           { animation: boot-rise-soft 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.20s both; }
+.v2-sched-panel           { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both; }
+.v2-thru-panel            { animation: boot-rise-soft 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.55s both; }
 </style>
 """
 
@@ -1512,24 +1507,39 @@ V2_CSS = r"""
     padding-right: 6px !important;
 }
 
-/* Subtle terracotta crosshatch on page bg — adds depth without competing with content */
+/* Terracotta atmosphere — crosshatch + grid + radial halos break the flat black */
 .stApp {
     background:
+        /* primary 45° crosshatch — visible technical grid */
         repeating-linear-gradient(
             45deg,
-            rgba(219, 116, 70, 0.020) 0,
-            rgba(219, 116, 70, 0.020) 1px,
+            rgba(219, 116, 70, 0.045) 0,
+            rgba(219, 116, 70, 0.045) 1px,
             transparent 1px,
-            transparent 8px
+            transparent 14px
         ),
+        /* counter-hatch at -45° at lower alpha */
         repeating-linear-gradient(
             -45deg,
-            rgba(219, 116, 70, 0.013) 0,
-            rgba(219, 116, 70, 0.013) 1px,
+            rgba(219, 116, 70, 0.028) 0,
+            rgba(219, 116, 70, 0.028) 1px,
             transparent 1px,
-            transparent 8px
+            transparent 14px
         ),
-        radial-gradient(ellipse at top, rgba(201, 100, 66, 0.035) 0%, transparent 60%),
+        /* faint horizontal scanlines layered on top */
+        repeating-linear-gradient(
+            0deg,
+            rgba(255, 138, 92, 0.012) 0,
+            rgba(255, 138, 92, 0.012) 1px,
+            transparent 1px,
+            transparent 3px
+        ),
+        /* top halo behind header */
+        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(219, 116, 70, 0.10) 0%, transparent 65%),
+        /* bottom-left ambient warmth */
+        radial-gradient(circle at 0% 100%, rgba(201, 100, 66, 0.07) 0%, transparent 45%),
+        /* bottom-right ambient warmth */
+        radial-gradient(circle at 100% 100%, rgba(219, 116, 70, 0.06) 0%, transparent 45%),
         var(--bg) !important;
     background-attachment: fixed !important;
 }
