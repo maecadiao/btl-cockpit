@@ -4974,19 +4974,37 @@ with overview_tab:
         # system/queue/ intent contract — runner pool executes concurrently.
         # Streaming hero stays focused on the foreground run; queued runs
         # land as new system/runs/<uuid>.md files when complete.
+        # Skills the agentic-os runner can dispatch directly (see ~/.claude/
+        # agentic-os-runner/runner.js switch on intent.skill). Anything outside
+        # this set can't be queued — would error with "unknown or invalid intent".
+        RUNNER_SKILLS = {
+            "morning", "morning-report", "inbox-brief", "deep-research",
+            "content-cascade", "weekly-review", "yt-pipeline", "vault-cleanup",
+            "metrics-pull", "yt-week-review", "plan-today", "plan-tomorrow",
+            "refresh-schedule",
+        }
+
+        def _extract_slash_skill(template: str) -> str | None:
+            """Pull the /skill-name token from a chip's prompt template."""
+            m = re.search(r"/([a-z][a-z0-9_-]*)", template)
+            return m.group(1) if m else None
+
         def _queue_skill(skill: dict):
             template = skill.get("prompt_template", "")
             if "{input}" in template:
                 st.toast(
-                    f"{skill['label']} needs input — wait for current run to finish",
+                    f"{skill['label']} needs input — wait for current run",
                     icon="⚠️",
                 )
                 return
-            full_prompt = _wrap_autonomy(template) if template else ""
-            uid, _ = write_queue_intent(
-                "ad-hoc",
-                {"label": skill["label"], "prompt": full_prompt},
-            )
+            runner_skill = _extract_slash_skill(template)
+            if not runner_skill or runner_skill not in RUNNER_SKILLS:
+                st.toast(
+                    f"{skill['label']} not queueable — runner doesn't dispatch /{runner_skill or '?'}",
+                    icon="⚠️",
+                )
+                return
+            uid, _ = write_queue_intent(runner_skill, {"source_label": skill["label"]})
             st.toast(f"queued · {skill['label']} · {uid[:8]}", icon="✅")
 
         st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
