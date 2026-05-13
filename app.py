@@ -3029,6 +3029,91 @@ def render_audience_row() -> None:
             )
 
 
+def read_last_pull_ts() -> str | None:
+    """Most-recent ts across sources in last-pull.json."""
+    try:
+        if not LAST_PULL_JSON.exists():
+            return None
+        data = json.loads(LAST_PULL_JSON.read_text(encoding="utf-8"))
+        latest = None
+        for src, info in (data or {}).items():
+            ts = info.get("ts") if isinstance(info, dict) else None
+            if ts and (latest is None or ts > latest):
+                latest = ts
+        return latest
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def render_tokenburn_meter(used: int, budget: int, reset_at: float | None, last_pull_ts: str | None) -> str:
+    """5h window TokenBurn marquee. Returns HTML string mirroring Obsidian cockpit component."""
+    pct = min(100.0, (used / budget * 100.0) if budget else 0.0)
+
+    # Projection: linear extrapolation of current burn to end-of-window.
+    proj_pct = pct
+    if reset_at:
+        try:
+            reset_in_sec = max(0, int(reset_at - time.time()))
+            window_sec = 5 * 3600
+            elapsed_sec = max(60, window_sec - reset_in_sec)
+            burn_per_sec = used / elapsed_sec if elapsed_sec else 0
+            projected_total = used + (burn_per_sec * reset_in_sec)
+            if budget:
+                proj_pct = min(100.0, projected_total / budget * 100.0)
+        except Exception:
+            pass
+
+    tone = "danger" if pct >= 90 else ("warn" if pct >= 70 else "")
+
+    pull_age_html = "—"
+    pull_dt = _parse_iso(last_pull_ts or "")
+    if pull_dt:
+        try:
+            age = int((datetime.now(pull_dt.tzinfo) - pull_dt).total_seconds())
+            pull_age_html = f"last pull {fmt_ago(max(0, age))} ago"
+        except Exception:
+            pass
+
+    pct_int = int(round(pct))
+    proj_left = pct
+    proj_width = max(0.0, proj_pct - pct)
+
+    used_h = fmt_tokens(int(used))
+    budget_h = fmt_tokens(int(budget))
+    projected_total = int((proj_pct / 100.0) * budget) if budget else 0
+    projected_h = fmt_tokens(projected_total)
+
+    # Tick marks every 25% of budget — keeps scale legible.
+    ticks = []
+    for frac in (0, 0.25, 0.5, 0.75, 1.0):
+        ticks.append(fmt_tokens(int(budget * frac)) if budget else "—")
+
+    return (
+        '<div class="v2-tb-wrap">'
+        '<span class="v2-hud-bl"></span><span class="v2-hud-br"></span>'
+        '<div class="v2-tb-head">'
+        '<span>§ TOKEN BURN · 5H WINDOW</span>'
+        '<span class="v2-live">LIVE</span>'
+        f'<span style="margin-left:auto;color:var(--fg-mute)">{pull_age_html}</span>'
+        '</div>'
+        f'<div class="v2-tb-pct">{pct_int}<em>%</em></div>'
+        '<div class="v2-tb-track">'
+        f'<div class="v2-tb-fill {tone}" style="width:{pct:.1f}%"></div>'
+        f'<div class="v2-tb-proj" style="left:{proj_left:.1f}%;width:{proj_width:.1f}%"></div>'
+        f'<div class="v2-tb-comet" style="left:{pct:.1f}%"></div>'
+        '<div class="v2-tb-scan"></div>'
+        '</div>'
+        '<div class="v2-tb-ticks">'
+        + "".join(f"<span>{t}</span>" for t in ticks) +
+        '</div>'
+        '<div class="v2-tb-footer">'
+        f'<span class="v2-tb-counts"><em>{used_h}</em> / {budget_h}</span>'
+        f'<span class="v2-tb-proj-label">→ {projected_h} projected</span>'
+        '</div>'
+        '</div>'
+    )
+
+
 five_h_reset = (rate_limits.get("five_hour") or {}).get("resets_at")
 week_reset = (rate_limits.get("weekly") or {}).get("resets_at")
 
@@ -3272,6 +3357,18 @@ else:
     research_tab = nullcontext()
 
 with overview_tab:
+
+    # ── TokenBurn marquee (5h window) ─────────────────────────
+    if _enabled_cards.get("tokenburn", True):
+        st.markdown(
+            render_tokenburn_meter(
+                used=five_h_tokens,
+                budget=LIMITS["five_hour_tokens"],
+                reset_at=five_h_reset,
+                last_pull_ts=read_last_pull_ts(),
+            ),
+            unsafe_allow_html=True,
+        )
 
     col_main, col_side = st.columns([2.6, 1], gap="large")
 
