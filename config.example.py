@@ -97,6 +97,56 @@ SESSION_META_DIR = Path.home() / ".claude" / "usage-data" / "session-meta"
 # Delete any you don't use.
 # ───────────────────────────────────────────────────────────────
 
+# ───────────────────────────────────────────────────────────────
+# LAYOUT — v1 = legacy single column, v2 = tabbed cockpit (overview/audience/research)
+# ───────────────────────────────────────────────────────────────
+LAYOUT_VERSION = "v2"
+
+# Per-card toggles. Hide cards by flipping False; useful when forking.
+ENABLED_CARDS = {
+    "latest_upload":  True,
+    "audience_row":   True,
+    "tokenburn":      True,   # overview marquee
+    "yt_week_review": True,   # audience marquee
+    "morning_brief":  True,   # research marquee
+    "schedule":       True,   # overview lower-left
+    "daily_drivers":  True,   # overview lower-right
+}
+
+# ───────────────────────────────────────────────────────────────
+# DEMO MODE — when True, all readers fall back to canned data
+# so a deployer with an empty vault sees a populated dashboard.
+# Set in config.py (gitignored), not here.
+# ───────────────────────────────────────────────────────────────
+DEMO_MODE = False
+
+DEMO_USAGE = {
+    "five_hour": {"input": 1_820_000, "output": 1_300_000, "total": 3_120_000, "sessions": 7},
+    "weekly":    {"input": 22_400_000, "output": 18_600_000, "total": 41_000_000, "sessions": 43},
+    "today":     {"input": 6_500_000, "output": 4_800_000, "total": 11_300_000,
+                  "sessions": 12, "routines": 9, "cost": 14.27, "runs": 18},
+}
+
+DEMO_AUDIENCE = {
+    "youtube_subs":     {"value": 123_000, "ts": "2026-05-13T17:00:00Z", "status": "mock"},
+    "youtube_views_28d": {"value": 9_497_973, "ts": "2026-05-13T17:00:00Z", "status": "mock"},
+    "instagram_followers": {"value": 1_460, "ts": "2026-05-13T17:00:00Z", "status": "mock"},
+    "tiktok_followers":   {"value": 1_103, "ts": "2026-05-13T17:00:00Z", "status": "mock"},
+}
+
+DEMO_LATEST_VIDEO = {
+    "title": "claude code vs codex is not a question",
+    "video_id": "u_xyjZq-xDU",
+    "url": "https://youtu.be/u_xyjZq-xDU",
+    "views": 1_571,
+    "likes": 51,
+    "comments": 1,
+    "published_at": "2026-05-13T12:31:07Z",
+    "ts": "2026-05-13T17:00:00Z",
+    "status": "mock",
+}
+
+
 SKILLS = [
     # ─── DAILY ROUTINES (no input) ───
     {

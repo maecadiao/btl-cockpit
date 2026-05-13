@@ -23,6 +23,7 @@ from config import (
     RUNS_DIR,
     DRAFTS_AWAITING,
     SKILLS,
+    SKILL_CATEGORY_ORDER,
     RUN_TIMEOUT_SEC,
     PERMISSION_MODE,
     LIMITS,
@@ -1335,6 +1336,18 @@ hr.chapter::after { content: none; }
     text-decoration: none !important;
 }
 .cpt-skill.loaded { box-shadow: 0 0 0 1px var(--accent); }
+.cpt-skill.disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    border: 1px dashed var(--ring-soft);
+    box-shadow: none;
+}
+.cpt-skill.disabled:hover {
+    box-shadow: none;
+    border-color: var(--ring-soft);
+}
+.cpt-skill.disabled .cpt-skill-name { color: var(--fg-mute); }
+.cpt-skill.disabled:hover .cpt-skill-name { color: var(--fg-mute); }
 .cpt-skill-name {
     color: var(--fg);
     font-size: 0.72rem;
@@ -2270,6 +2283,14 @@ usage = calc_usage_windows()
 rate_limits = load_rate_limits()
 metrics = calc_metrics()
 
+# Optional demo override — only active if config.py (local, gitignored) sets DEMO_MODE = True.
+# Harmless no-op when DEMO_MODE is absent or False.
+import config as _cfg
+if getattr(_cfg, "DEMO_MODE", False):
+    _demo = getattr(_cfg, "DEMO_USAGE", None)
+    if _demo:
+        usage = _demo
+
 
 def _gauge_class(pct: float) -> str:
     if pct >= 90:
@@ -2894,21 +2915,29 @@ with col_main:
         st.session_state.prompt_input_widget = template
         st.session_state.last_chip_label = label
 
+    def _fire_trigger(skill: dict):
+        try:
+            res = subprocess.run(
+                skill["command"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if res.returncode == 0:
+                st.toast(f"▶ {skill['label']} triggered", icon="✓")
+            else:
+                err = (res.stderr or res.stdout or "unknown").strip().splitlines()[-1][:120]
+                st.toast(f"✗ {skill['label']}: {err}", icon="⚠")
+        except Exception as e:
+            st.toast(f"✗ {skill['label']}: {e}", icon="⚠")
+
     def _clear_prompt():
         st.session_state.prompt_input_widget = ""
         st.session_state.last_chip_label = None
 
     clicked = None
 
-    # Query-param chip loader: <a href="?skill=Label"> → load template
-    _skill_q = st.query_params.get("skill")
-    if _skill_q and not st.session_state.running:
-        for _s in SKILLS:
-            if _s["label"] == _skill_q:
-                st.session_state.prompt_input_widget = _s["prompt_template"]
-                st.session_state.last_chip_label = _s["label"]
-                break
-        st.query_params.clear()
 
     if not st.session_state.running:
         st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
@@ -2943,28 +2972,60 @@ with col_main:
                     label = st.session_state.last_chip_label or "Ad-hoc"
                     clicked = {"label": label, "prompt": text}
 
-        # Skill chips — cpt-skill anchor grid grouped by category
+        # Skill chips — st.button grid (no page reload, WebSocket rerun)
         st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
-        skills_sorted = sorted(SKILLS, key=lambda s: s.get("category", "other"))
-        _active = st.session_state.last_chip_label
+        _cat_rank = {c: i for i, c in enumerate(SKILL_CATEGORY_ORDER)}
+        _fallback_rank = len(SKILL_CATEGORY_ORDER)
+        skills_sorted = sorted(
+            SKILLS,
+            key=lambda s: (_cat_rank.get(s.get("category", "other"), _fallback_rank),),
+        )
+        _cols_per_row = 4
         for category, group in groupby(skills_sorted, key=lambda s: s.get("category", "other")):
             group_list = list(group)
-            grid_html = (
-                f'<div class="cpt-cat chip-cat">{html_escape(category)}</div>'
-                '<div class="cpt-skill-grid">'
+            st.markdown(
+                f'<div class="cpt-cat chip-cat">{html_escape(category)}</div>',
+                unsafe_allow_html=True,
             )
-            for skill in group_list:
-                loaded = " loaded" if skill["label"] == _active else ""
-                grid_html += (
-                    f'<a class="cpt-skill{loaded}" '
-                    f'href="?skill={quote(skill["label"])}" target="_self" '
-                    f'title="{html_escape(skill["description"])}">'
-                    f'<span class="cpt-skill-name">{html_escape(skill["label"])}</span>'
-                    f'<span class="cpt-skill-desc">{html_escape(skill["description"])}</span>'
-                    '</a>'
-                )
-            grid_html += '</div>'
-            st.markdown(grid_html, unsafe_allow_html=True)
+            # Chunk into rows of _cols_per_row
+            for row_start in range(0, len(group_list), _cols_per_row):
+                row = group_list[row_start:row_start + _cols_per_row]
+                cols = st.columns(_cols_per_row, gap="small")
+                for i, skill in enumerate(row):
+                    with cols[i]:
+                        label = skill["label"]
+                        desc = skill["description"]
+                        key = f"chip_{category}_{label}"
+                        if skill.get("disabled"):
+                            st.button(
+                                label,
+                                key=key,
+                                disabled=True,
+                                use_container_width=True,
+                                help=desc,
+                            )
+                        elif skill.get("trigger"):
+                            st.button(
+                                label,
+                                key=key,
+                                use_container_width=True,
+                                help=desc,
+                                on_click=_fire_trigger,
+                                args=(skill,),
+                            )
+                        else:
+                            st.button(
+                                label,
+                                key=key,
+                                use_container_width=True,
+                                help=desc,
+                                on_click=_load_chip,
+                                args=(skill["prompt_template"], label),
+                            )
+                # Fill remaining columns with empty placeholders to keep grid aligned
+                for _fill in range(len(row), _cols_per_row):
+                    with cols[_fill]:
+                        st.markdown("&nbsp;", unsafe_allow_html=True)
 
         # Trigger run
         if clicked:
