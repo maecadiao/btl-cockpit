@@ -2281,6 +2281,71 @@ V2_CSS = r"""
     text-decoration: line-through;
 }
 
+/* Background queue card — shows pending / running / recently-completed runs */
+.v2-queue-card {
+    margin-bottom: 12px;
+    padding: 12px 14px 10px;
+}
+.v2-queue-card .v2-panel-head {
+    margin-bottom: 6px;
+}
+.v2-queue-row {
+    display: grid;
+    grid-template-columns: 10px 1fr auto auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    border-bottom: 1px dashed var(--cc-ring);
+}
+.v2-queue-row:last-child { border-bottom: none; }
+.v2-queue-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--cc-fg-2);
+    box-shadow: 0 0 0 2px rgba(135, 134, 127, 0.18);
+}
+.v2-queue-dot.queued {
+    background: var(--warn);
+    box-shadow: 0 0 0 2px rgba(217, 165, 102, 0.18), 0 0 6px rgba(217, 165, 102, 0.45);
+}
+.v2-queue-dot.running {
+    background: var(--cc-accent);
+    box-shadow: 0 0 0 2px rgba(219, 116, 70, 0.22), 0 0 8px rgba(219, 116, 70, 0.65);
+    animation: v2-blink 1.4s infinite;
+}
+.v2-queue-dot.done {
+    background: var(--good);
+    box-shadow: 0 0 0 2px rgba(143, 185, 122, 0.18);
+}
+.v2-queue-dot.err {
+    background: var(--danger);
+    box-shadow: 0 0 0 2px rgba(181, 51, 51, 0.20);
+}
+.v2-queue-label {
+    color: var(--cc-fg-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.v2-queue-status {
+    color: var(--cc-fg-2);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.v2-queue-meta {
+    color: var(--cc-fg-2);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+.v2-queue-link {
+    color: var(--cc-accent);
+    text-decoration: none;
+    font-size: 11px;
+}
+.v2-queue-link:hover { text-decoration: underline; }
+
 /* Quicknav pull pill — terracotta-tinted, matches status chip footprint */
 .quicknav .qn-pull {
     background: rgba(219, 116, 70, 0.10);
@@ -3573,6 +3638,86 @@ import uuid as _uuid
 
 YT_REVIEWS_DIR = VAULT_PATH / "inbox" / "reports" / "yt-reviews"
 QUEUE_DIR = VAULT_PATH / "system" / "queue"
+RUNS_BG_DIR = VAULT_PATH / "system" / "runs"
+
+
+def read_queue_state(recent_window_min: int = 30) -> list[dict]:
+    """Return pending + active + recently-completed background runs.
+
+    Sources:
+      - system/queue/<uuid>.json  — pending intents (runner hasn't picked up)
+      - system/runs/<uuid>.json   — runner-tracked runs (queued/running/ok/err)
+    """
+    items: list[dict] = []
+    now = datetime.now()
+
+    # Pending intents
+    if QUEUE_DIR.exists():
+        for f in QUEUE_DIR.glob("*.json"):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                args = data.get("args") or {}
+                items.append({
+                    "id": data.get("id", f.stem),
+                    "skill": args.get("label") or data.get("skill", "?"),
+                    "status": "queued",
+                    "ts": data.get("ts_queued"),
+                    "elapsed_sec": None,
+                })
+            except (OSError, json.JSONDecodeError):
+                continue
+
+    # Active + recent in runs/
+    if RUNS_BG_DIR.exists():
+        recent_files = sorted(
+            RUNS_BG_DIR.glob("*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )[:20]
+        for f in recent_files:
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            args = data.get("args") or {}
+            skill = args.get("label") or data.get("skill", "?")
+            status = (data.get("status") or "running").lower()
+            ts_completed = data.get("ts_completed")
+            ts_started = data.get("ts_started") or data.get("ts_queued")
+            elapsed = None
+            if ts_completed:
+                cdt = _parse_iso(ts_completed)
+                if cdt:
+                    age_min = (datetime.now(cdt.tzinfo) - cdt).total_seconds() / 60
+                    if age_min > recent_window_min:
+                        continue
+                # set elapsed = run duration
+                sdt = _parse_iso(ts_started) if ts_started else None
+                if sdt and cdt:
+                    elapsed = int((cdt - sdt).total_seconds())
+            else:
+                # still running
+                sdt = _parse_iso(ts_started) if ts_started else None
+                if sdt:
+                    elapsed = int((datetime.now(sdt.tzinfo) - sdt).total_seconds())
+                if status == "ok":
+                    status = "running"  # safety net if file lacks ts_completed
+            items.append({
+                "id": data.get("id", f.stem),
+                "skill": skill,
+                "status": status,
+                "ts": ts_completed or ts_started,
+                "elapsed_sec": elapsed,
+            })
+
+    # Sort: queued + running first, then most-recently-completed
+    def _rank(it):
+        s = it["status"]
+        if s == "running": return 0
+        if s == "queued":  return 1
+        return 2
+    items.sort(key=lambda it: (_rank(it), -(_parse_iso(it.get("ts") or "").timestamp() if _parse_iso(it.get("ts") or "") else 0)))
+    return items
 
 
 def _latest_in_dir(dir_path: Path, glob: str = "*.md") -> Path | None:
@@ -4343,8 +4488,45 @@ with overview_tab:
     col_main, col_side = st.columns([2.6, 1], gap="large")
 
 
-    # ——— SIDEBAR COLUMN: recent runs ———
+    # ——— SIDEBAR COLUMN: queue + recent runs ———
     with col_side:
+        # Background queue card — pending + running + recently-completed.
+        # Wrapped in a 3s fragment so newly queued/finishing background runs
+        # appear without a full page rerun.
+        @st.fragment(run_every=3.0)
+        def queue_card_fragment():
+            _q_state = read_queue_state(recent_window_min=30)
+            if not _q_state:
+                return
+            _q_html = '<div class="v2-panel v2-queue-card"><div class="v2-panel-head">§ BACKGROUND QUEUE</div>'
+            for it in _q_state[:8]:
+                st_class = it["status"]  # queued / running / ok / err
+                dot_class = {
+                    "running": "running",
+                    "queued":  "queued",
+                    "ok":      "done",
+                }.get(st_class, "err")
+                elapsed_html = ""
+                if it["elapsed_sec"] is not None:
+                    elapsed_html = f'<span class="v2-queue-meta">{fmt_ago(it["elapsed_sec"])}</span>'
+                run_path = RUNS_BG_DIR / f"{it['id']}.md"
+                link_html = ""
+                if run_path.exists():
+                    link_html = f'<a href="{obsidian_uri(run_path)}" target="_blank" class="v2-queue-link">↗</a>'
+                _q_html += (
+                    '<div class="v2-queue-row">'
+                    f'<span class="v2-queue-dot {dot_class}"></span>'
+                    f'<span class="v2-queue-label">{html_escape(it["skill"])}</span>'
+                    f'<span class="v2-queue-status">{st_class}</span>'
+                    f'{elapsed_html}'
+                    f'{link_html}'
+                    '</div>'
+                )
+            _q_html += '</div>'
+            st.markdown(_q_html, unsafe_allow_html=True)
+
+        queue_card_fragment()
+
         runs = list_recent_runs(8)
         card_html = '<div class="runs-card"><div class="cat-label">recent runs</div>'
         if not runs:
