@@ -3237,12 +3237,24 @@ LAST_PULL_JSON = VAULT_PATH / "system" / "metrics" / "last-pull.json"
 
 
 def read_claude_5h_billable() -> tuple[int | None, str | None]:
-    """Latest claude_code/billable_5h from metrics.csv. Returns (tokens, ts) or (None, None).
+    """Latest claude_code/tokens_5h (output-only) from metrics.csv.
 
-    Claude Code 2.1+ writes session usage into per-conversation jsonl logs under
-    ~/.claude/projects/, not the legacy SESSION_META_DIR. The /metrics-pull skill
-    parses Anthropic's billable count + appends a `claude_code/billable_5h` row.
-    Use that as the authoritative TokenBurn source.
+    The /metrics-pull skill emits three claude_code rows per pull:
+    - tokens_5h      → OUTPUT tokens (the metric Anthropic actually meters
+                       for the 5h rate-limit, per pull_claude_usage.py)
+    - billable_5h    → input + output + cache_creation (informational only,
+                       NOT what shows up as the rate-limit percentage)
+    - cache_read_5h  → cache-read tokens (not metered)
+
+    Earlier version of this reader pulled billable_5h, which made TokenBurn
+    show ~75% even when claude.ai dev page showed ~4%. tokens_5h is the
+    correct field.
+
+    LIMITS["five_hour_tokens"] in config should be calibrated against your
+    plan's actual output-token cap. Anthropic does not publish the exact
+    number; community trackers report ~220K-440K for Max20x as of the
+    April 2026 policy + later doubling. Default 5M is conservative —
+    lower it if you want the % to read closer to what claude.ai shows.
     """
     if not METRICS_CSV.exists():
         return None, None
@@ -3256,7 +3268,7 @@ def read_claude_5h_billable() -> tuple[int | None, str | None]:
                 if len(parts) < 5:
                     continue
                 ts, source, metric, value, status = parts[:5]
-                if source != "claude_code" or metric != "billable_5h":
+                if source != "claude_code" or metric != "tokens_5h":
                     continue
                 if status not in ("ok", "mock"):
                     continue
