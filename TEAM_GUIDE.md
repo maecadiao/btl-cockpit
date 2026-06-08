@@ -25,6 +25,113 @@ The AI behind it is Claude (made by Anthropic — the same company that makes Cl
 
 ---
 
+## How this OS helps BTL — and why it matters
+
+Be The Light Decor is a growing business. As the team and the number of jobs grow, so does the admin work — emails pile up, invoices go untracked, leads fall through the cracks, social content doesn't get posted. These are not failures of effort. There just aren't enough hours.
+
+The BTL Agentic OS exists to give those hours back.
+
+Instead of spending 45 minutes reading emails and writing a follow-up, you click **Inbox Digest** and have a summary in 60 seconds. Instead of Hunter manually reviewing the pipeline before a sales call, he clicks **Pipeline Review** and has a full briefing. Instead of Maddi spending her morning figuring out who goes where, she clicks **Crew Brief** and the day is organized.
+
+**The OS doesn't replace anyone on the team. It handles the repetitive writing, reviewing, and summarizing so the team can focus on the work that actually requires a human — being on-site, talking to clients, installing beautiful lighting.**
+
+### Specific ways it helps each role
+
+**Hunter (Owner)**
+- Start the week with **KPI Digest** — one look tells you if revenue, leads, and jobs are on track or need attention
+- Before any sales call, run **Sales Call Prep** — Claude pulls the client context and tells you exactly what to say
+- Once a month, run **P&L Narrative** and **Revenue Growth** — plain-English analysis of where the money is going and where the growth opportunities are
+- No more digging through QuickBooks trying to piece together the story — it's written for you
+
+**Mae (Operations & Admin)**
+- Start every morning with **Inbox Digest** — know what needs a response before you open a single email
+- When a quote goes out, set a reminder and come back in 3 days to click **Quote Follow-up** — Claude writes the email
+- Use **Billing Digest** weekly to stay on top of who hasn't paid and what to chase
+- When onboarding a new hire, click **Onboarding Doc** — enter the role, get a full document in minutes instead of hours
+- When the team needs a new SOP, click **Write SOP** — describe the process, get a draft to edit
+
+**Shella / Maddi (Sales & Client)**
+- Use **Lead Qualifier** when a new inquiry comes in — paste the info and Claude tells you if it's a strong lead worth pursuing
+- Use **Write Proposal** to generate professional proposals quickly — enter the job details, get a polished document
+- Use **Caption Writer** before posting on social — describe the project, get a ready-to-post caption in BTL's voice
+
+**Matt / Crew**
+- Check the **Crew Brief** each morning — it shows the day's jobs, locations, and any notes
+- The **JOBBER tab** shows what's on the schedule at a glance
+
+---
+
+## How to use this on a daily basis
+
+Think of the dashboard as having a **morning routine**, a **during-the-day routine**, and a **weekly routine**.
+
+---
+
+### ☀️ Morning routine (5 minutes)
+
+Open the dashboard. Do these in order:
+
+1. **Click INBOX DIGEST** — read the summary. Note anything urgent.
+2. **Click CREW BRIEF** — confirm today's jobs are accounted for and the crew knows where to go.
+3. **Check the OVERVIEW tab** — glance at the Schedule panel to see if anything changed or was added overnight.
+4. **Check the GHL tab** — are there any new leads that came in? Anything to follow up on?
+
+That's it. Five minutes and you have a full picture of the day.
+
+---
+
+### 🕐 During the day
+
+Use the buttons as things come up:
+
+| Situation | Button to click |
+|---|---|
+| New lead comes in | **Lead Qualifier** |
+| Need to send a quote follow-up | **Quote Follow-up** |
+| Client asks a question via email | **Inbox Reply Draft** |
+| Need to post on social | **Caption Writer** |
+| Sales call in 30 minutes | **Sales Call Prep** |
+| Need to write a proposal | **Write Proposal** |
+
+You don't need to use every skill every day. Use what's relevant to what's in front of you.
+
+---
+
+### 📅 Weekly routine (Monday morning)
+
+Once a week — ideally Monday before things get busy — run these three:
+
+1. **KPI Digest** — see the scorecard. What's green? What's yellow or red?
+2. **Pipeline Review** — where are your leads? Who needs a nudge this week?
+3. **Billing Digest** — who still owes money? What's overdue?
+
+These three buttons together give you a complete weekly business review in under 10 minutes. What used to take a Monday morning meeting now takes a coffee break.
+
+---
+
+### 📆 Monthly routine (first week of the month)
+
+Once a month, run the executive skills to get the full financial picture:
+
+1. **P&L Narrative** — plain-English explanation of last month's profit and loss
+2. **Revenue Growth** — how does this month compare to last month, last quarter, last year?
+
+These are the reports Hunter can use to make decisions about hiring, pricing, marketing spend, and growth.
+
+---
+
+## The mindset shift
+
+The biggest change the OS asks of the team is a simple one: **before you start writing something from scratch, ask yourself if there's a button for it.**
+
+Writing a follow-up email? There's a button. Reviewing the pipeline? There's a button. Figuring out today's crew assignments? There's a button.
+
+Over time, clicking before typing becomes habit. And the hours you save compound — an extra hour a day across the team is 20+ hours a week that goes back into the business.
+
+**The goal isn't to use every skill every day. The goal is to never spend 30 minutes on something Claude can do in 30 seconds.**
+
+---
+
 ## The screen layout
 
 When you open the dashboard you'll see:
