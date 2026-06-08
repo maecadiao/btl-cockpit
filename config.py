@@ -14,7 +14,7 @@ from pathlib import Path
 # Local Windows path when running on the office machine.
 # Falls back to a temp dir on Streamlit Cloud (DEMO_MODE covers it).
 _local_vault = Path(r"C:\Users\labor\the-vault")
-VAULT_PATH = _local_vault if _local_vault.exists() else Path("/tmp/btl-vault")
+VAULT_PATH = _local_vault if _local_vault.exists() else Path("demo-vault")
 VAULT_NAME = "BTL Cockpit"
 
 # Skill runner — only works when the local runner is active.
