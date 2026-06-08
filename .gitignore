@@ -11,8 +11,8 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Personal config — users copy config.example.py to config.py and edit locally
-config.py
+# config.py is committed for BTL — DEMO_MODE=True, cloud-safe paths
+# config.py
 
 # Internal dev docs
 DESIGN.md

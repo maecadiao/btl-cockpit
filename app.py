@@ -32,7 +32,7 @@ from config import (
 )
 import config as _cfg  # for getattr lookups (DEMO_MODE, ENABLED_CARDS, DEMO_*)
 
-st.set_page_config(page_title="Agentic OS", page_icon="◆", layout="wide")
+st.set_page_config(page_title="BTL Cockpit", page_icon="◆", layout="wide")
 
 # ═══════════════════════════════════════════════════════════
 # GLOBAL RUNTIME (shared across reruns, lives in module scope)
@@ -94,8 +94,8 @@ PREMIUM_CSS = r"""
     --fg:         #faf9f5;
     --fg-dim:     #b0aea5;
     --fg-mute:    #87867f;
-    --accent:     #c96442;
-    --accent-soft: rgba(201, 100, 66, 0.12);
+    --accent:     #EEBA0B;
+    --accent-soft: rgba(238, 186, 11, 0.12);
     --warn:       #d9a566;
     --danger:     #b53333;
     --good:       #8fb97a;
@@ -108,8 +108,8 @@ PREMIUM_CSS = r"""
     --border-strong: var(--ring-mid);
     --ring-warm:     var(--ring-soft);
     --ring-deep:     var(--ring-mid);
-    --accent-glow:   rgba(201, 100, 66, 0.32);
-    --coral:         #d97757;
+    --accent-glow:   rgba(238, 186, 11, 0.32);
+    --coral:         #F0C030;
     --amber:         var(--warn);
 }
 
@@ -304,7 +304,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .stTextArea textarea:hover {
     box-shadow:
-        0 0 0 1px rgba(201, 100, 66, 0.45),
+        0 0 0 1px rgba(238, 186, 11, 0.45),
         inset 0 1px 0 rgba(255, 255, 255, 0.04),
         0 6px 22px rgba(0, 0, 0, 0.4) !important;
 }
@@ -312,7 +312,7 @@ h1, h2, h3, h4, h5, h6 {
     background: #201e1c !important;
     box-shadow:
         0 0 0 1px var(--accent),
-        0 0 0 4px rgba(201, 100, 66, 0.12),
+        0 0 0 4px rgba(238, 186, 11, 0.12),
         inset 0 1px 0 rgba(255, 255, 255, 0.04),
         0 8px 28px rgba(0, 0, 0, 0.45) !important;
     outline: none !important;
@@ -340,7 +340,7 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 0 0 1px var(--accent);
 }
 .stButton > button:active, .stFormSubmitButton > button:active {
-    background: rgba(201, 100, 66, 0.1) !important;
+    background: rgba(238, 186, 11, 0.1) !important;
     color: var(--accent) !important;
     box-shadow: 0 0 0 1px var(--accent) !important;
 }
@@ -448,7 +448,7 @@ hr.chapter::after { content: none; }
 }
 @keyframes hero-pulse {
     0%, 100% { box-shadow: 0 0 0 1px var(--accent); }
-    50%      { box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(201, 100, 66, 0.28); }
+    50%      { box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(238, 186, 11, 0.28); }
 }
 
 .hero-label {
@@ -527,13 +527,13 @@ hr.chapter::after { content: none; }
 }
 .status-chip.running {
     color: var(--accent);
-    background: rgba(201, 100, 66, 0.06);
+    background: rgba(238, 186, 11, 0.06);
     box-shadow: 0 0 0 1px var(--accent);
     animation: chip-pulse 2.4s ease-in-out infinite;
 }
 @keyframes chip-pulse {
     0%, 100% { box-shadow: 0 0 0 1px var(--accent); }
-    50%      { box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgba(201, 100, 66, 0.3); }
+    50%      { box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgba(238, 186, 11, 0.3); }
 }
 
 .activity-feed {
@@ -568,14 +568,14 @@ hr.chapter::after { content: none; }
     margin: 0.2rem 0.3rem 0.1rem 0;
     border: none;
     border-radius: 2px;
-    background: rgba(201, 100, 66, 0.05);
-    box-shadow: 0 0 0 1px rgba(201, 100, 66, 0.3);
+    background: rgba(238, 186, 11, 0.05);
+    box-shadow: 0 0 0 1px rgba(238, 186, 11, 0.3);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     transition: box-shadow 0.12s, background 0.12s;
 }
 .obsidian-link:hover, .meta-link:hover {
-    background: rgba(201, 100, 66, 0.1);
+    background: rgba(238, 186, 11, 0.1);
     box-shadow: 0 0 0 1px var(--accent);
 }
 .meta-link {
@@ -804,12 +804,12 @@ hr.chapter::after { content: none; }
     overflow: visible;
     padding: 0.4rem 0.85rem;
     color: var(--fg);
-    box-shadow: 0 0 0 1px var(--accent), 0 0 0 3px rgba(201, 100, 66, 0.08);
-    background: rgba(201, 100, 66, 0.04);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 0 3px rgba(238, 186, 11, 0.08);
+    background: rgba(238, 186, 11, 0.04);
 }
 .quicknav a.qn-claude:hover {
-    background: rgba(201, 100, 66, 0.09);
-    box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(201, 100, 66, 0.35);
+    background: rgba(238, 186, 11, 0.09);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(238, 186, 11, 0.35);
 }
 .quicknav a.qn-claude .qn-arrow {
     color: var(--accent);
@@ -912,7 +912,7 @@ hr.chapter::after { content: none; }
 }
 .mcp-dot.ready, .mcp-dot.connected {
     background: var(--accent);
-    box-shadow: 0 0 4px rgba(201, 100, 66, 0.55);
+    box-shadow: 0 0 4px rgba(238, 186, 11, 0.55);
 }
 .mcp-dot.needs_auth, .mcp-dot.needs-auth { background: var(--warn); }
 .mcp-dot.failed, .mcp-dot.error { background: var(--danger); }
@@ -993,7 +993,7 @@ hr.chapter::after { content: none; }
     pointer-events: none;
     z-index: 0;
     background-image:
-        radial-gradient(ellipse 78% 62% at 50% 55%, rgba(201, 100, 66, 0.055) 0%, rgba(201, 100, 66, 0) 72%),
+        radial-gradient(ellipse 78% 62% at 50% 55%, rgba(238, 186, 11, 0.055) 0%, rgba(238, 186, 11, 0) 72%),
         linear-gradient(180deg, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.18) 100%),
         repeating-linear-gradient(90deg, transparent 0 59px, rgba(209, 207, 197, 0.05) 59px 60px),
         repeating-linear-gradient(0deg,  transparent 0 39px, rgba(209, 207, 197, 0.05) 39px 40px),
@@ -1106,7 +1106,7 @@ hr.chapter::after { content: none; }
     background: transparent;
     box-shadow: 0 0 0 1px var(--ring-soft);
 }
-.gauge-delta.up, .cpt-gauge-delta.up         { color: var(--accent); box-shadow: 0 0 0 1px rgba(201, 100, 66, 0.40); background: rgba(201, 100, 66, 0.06); }
+.gauge-delta.up, .cpt-gauge-delta.up         { color: var(--accent); box-shadow: 0 0 0 1px rgba(238, 186, 11, 0.40); background: rgba(238, 186, 11, 0.06); }
 .gauge-delta.down, .cpt-gauge-delta.down     { color: var(--fg-dim); box-shadow: 0 0 0 1px var(--ring-soft); background: transparent; }
 .gauge-delta.neutral, .cpt-gauge-delta.neutral { color: var(--fg-mute); }
 
@@ -1148,15 +1148,15 @@ hr.chapter::after { content: none; }
 .cpt-forecast-elapsed {
     position: absolute;
     left: 0; top: 0; bottom: 0;
-    background: rgba(201, 100, 66, 0.35);
+    background: rgba(238, 186, 11, 0.35);
     border-right: 1px solid var(--accent);
 }
 .cpt-forecast-proj {
     position: absolute;
     top: 0; bottom: 0;
     background: repeating-linear-gradient(45deg,
-        rgba(201, 100, 66, 0.12) 0 5px,
-        rgba(201, 100, 66, 0.28) 5px 10px);
+        rgba(238, 186, 11, 0.12) 0 5px,
+        rgba(238, 186, 11, 0.28) 5px 10px);
     border-right: 1px dashed var(--accent);
 }
 .cpt-forecast-now {
@@ -1253,8 +1253,8 @@ hr.chapter::after { content: none; }
 }
 .cpt-verb.created {
     color: var(--accent);
-    box-shadow: 0 0 0 1px rgba(201, 100, 66, 0.35);
-    background: rgba(201, 100, 66, 0.08);
+    box-shadow: 0 0 0 1px rgba(238, 186, 11, 0.35);
+    background: rgba(238, 186, 11, 0.08);
 }
 .cpt-verb.appended {
     color: var(--warn);
@@ -1496,9 +1496,9 @@ V2_CSS = r"""
     --cc-fg-0:        #faf9f5;
     --cc-fg-1:        #c6c5be;
     --cc-fg-2:        #87867f;
-    --cc-accent:      #c96442;
-    --cc-accent-soft: rgba(201, 100, 66, 0.18);
-    --cc-accent-bg:   rgba(201, 100, 66, 0.10);
+    --cc-accent:      #EEBA0B;
+    --cc-accent-soft: rgba(238, 186, 11, 0.18);
+    --cc-accent-bg:   rgba(238, 186, 11, 0.10);
 
     /* Platform tones — kept saturated but with terracotta-led mix */
     --card-tone-youtube:    rgba(255, 51, 51, 0.10);
@@ -1507,8 +1507,8 @@ V2_CSS = r"""
     --card-tone-instagram-bd: rgba(225, 48, 108, 0.32);
     --card-tone-tiktok:    rgba(0, 240, 255, 0.08);
     --card-tone-tiktok-bd: rgba(0, 240, 255, 0.30);
-    --card-tone-claude:    rgba(201, 100, 66, 0.10);
-    --card-tone-claude-bd: rgba(201, 100, 66, 0.36);
+    --card-tone-claude:    rgba(238, 186, 11, 0.10);
+    --card-tone-claude-bd: rgba(238, 186, 11, 0.36);
 }
 
 /* All v2 cards use tabular numerics so values lock to a grid */
@@ -1529,33 +1529,33 @@ V2_CSS = r"""
         /* primary 45° crosshatch */
         repeating-linear-gradient(
             45deg,
-            rgba(219, 116, 70, 0.070) 0,
-            rgba(219, 116, 70, 0.070) 1px,
+            rgba(238, 186, 11, 0.070) 0,
+            rgba(238, 186, 11, 0.070) 1px,
             transparent 1px,
             transparent 16px
         ),
         /* counter-hatch at -45° */
         repeating-linear-gradient(
             -45deg,
-            rgba(219, 116, 70, 0.045) 0,
-            rgba(219, 116, 70, 0.045) 1px,
+            rgba(238, 186, 11, 0.045) 0,
+            rgba(238, 186, 11, 0.045) 1px,
             transparent 1px,
             transparent 16px
         ),
         /* horizontal scanlines */
         repeating-linear-gradient(
             0deg,
-            rgba(255, 138, 92, 0.018) 0,
-            rgba(255, 138, 92, 0.018) 1px,
+            rgba(238, 186, 11, 0.018) 0,
+            rgba(238, 186, 11, 0.018) 1px,
             transparent 1px,
             transparent 4px
         ),
         /* top halo behind header */
-        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(219, 116, 70, 0.13) 0%, transparent 65%),
+        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(238, 186, 11, 0.13) 0%, transparent 65%),
         /* bottom-left ambient warmth */
-        radial-gradient(circle at 0% 100%, rgba(201, 100, 66, 0.10) 0%, transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(238, 186, 11, 0.10) 0%, transparent 50%),
         /* bottom-right ambient warmth */
-        radial-gradient(circle at 100% 100%, rgba(219, 116, 70, 0.09) 0%, transparent 50%),
+        radial-gradient(circle at 100% 100%, rgba(238, 186, 11, 0.09) 0%, transparent 50%),
         var(--bg) !important;
     background-attachment: fixed !important;
 }
@@ -1577,17 +1577,17 @@ V2_CSS = r"""
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .v2-latest:hover {
-    border-color: rgba(201, 100, 66, 0.45);
+    border-color: rgba(238, 186, 11, 0.45);
     box-shadow:
-        inset 0 0 0 1px rgba(201, 100, 66, 0.16),
-        0 0 14px -2px rgba(201, 100, 66, 0.18);
+        inset 0 0 0 1px rgba(238, 186, 11, 0.16),
+        0 0 14px -2px rgba(238, 186, 11, 0.18);
 }
 .v2-latest::before {
     content: "";
     position: absolute;
     left: 0; top: 0; bottom: 0;
     width: 3px;
-    background: linear-gradient(180deg, var(--cc-accent) 0%, rgba(201,100,66,0.18) 100%);
+    background: linear-gradient(180deg, var(--cc-accent) 0%, rgba(238, 186, 11,0.18) 100%);
 }
 .v2-latest::after {
     content: "▶";
@@ -1653,10 +1653,10 @@ V2_CSS = r"""
     transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 .v2-audience-card:hover {
-    border-color: rgba(201, 100, 66, 0.45);
+    border-color: rgba(238, 186, 11, 0.45);
     box-shadow:
-        inset 0 0 0 1px rgba(201, 100, 66, 0.16),
-        0 0 14px -2px rgba(201, 100, 66, 0.18);
+        inset 0 0 0 1px rgba(238, 186, 11, 0.16),
+        0 0 14px -2px rgba(238, 186, 11, 0.18);
     transform: translateY(-1px);
 }
 .v2-audience-card[data-tone="youtube"]   { background: linear-gradient(135deg, var(--card-tone-youtube) 0%, var(--bg-card) 70%); border-color: var(--card-tone-youtube-bd); }
@@ -1712,14 +1712,14 @@ V2_CSS = r"""
 
 /* ── TokenBurn marquee (mirrors Obsidian cockpit) ───────────── */
 .v2-tb-wrap {
-    --tb-tone: 219, 116, 70;
-    --tb-fill-stop-mid: #e07a48;
-    --tb-fill-stop-end: #ff9a5c;
+    --tb-tone: 238, 186, 11;
+    --tb-fill-stop-mid: #F0C030;
+    --tb-fill-stop-end: #EEBA0B;
     position: relative;
     background:
-        linear-gradient(180deg, rgba(219, 116, 70, 0.14), rgba(219, 116, 70, 0.04) 60%, transparent 100%),
+        linear-gradient(180deg, rgba(238, 186, 11, 0.14), rgba(238, 186, 11, 0.04) 60%, transparent 100%),
         var(--bg-card);
-    border: 1px solid rgba(219, 116, 70, 0.40);
+    border: 1px solid rgba(238, 186, 11, 0.40);
     border-radius: 3px;
     padding: 16px 22px 14px;
     margin: 6px 0 10px 0;
@@ -1727,14 +1727,14 @@ V2_CSS = r"""
     flex-direction: column;
     gap: 14px;
     overflow: hidden;
-    box-shadow: 0 0 24px -10px rgba(219, 116, 70, 0.40);
+    box-shadow: 0 0 24px -10px rgba(238, 186, 11, 0.40);
 }
 .v2-tb-wrap::after {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(201, 100, 66, 0.65) 30%, rgba(201, 100, 66, 0.65) 70%, transparent);
+    background: linear-gradient(90deg, transparent, rgba(238, 186, 11, 0.65) 30%, rgba(238, 186, 11, 0.65) 70%, transparent);
 }
 .v2-tb-wrap.warn { border-color: rgba(217, 165, 102, 0.4); --tb-fill-stop-mid: #e6963c; --tb-fill-stop-end: #ffb05c; }
 .v2-tb-wrap.critical {
@@ -1790,7 +1790,7 @@ V2_CSS = r"""
 .v2-tb-live-dot {
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--cc-accent);
-    box-shadow: 0 0 6px rgba(201, 100, 66, 0.8);
+    box-shadow: 0 0 6px rgba(238, 186, 11, 0.8);
     animation: v2-tb-pulse 1.6s ease-in-out infinite;
 }
 @keyframes v2-tb-pulse {
@@ -1819,7 +1819,7 @@ V2_CSS = r"""
     gap: 2px;
     color: #e07a48;
     font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 18px rgba(255, 138, 92, 0.55);
+    text-shadow: 0 0 18px rgba(238, 186, 11, 0.55);
     font-family: 'JetBrains Mono', monospace;
     /* Nudge pct up so its baseline sits on the bar's vertical center
        instead of the bar+ticks group center. 64px line aligned to 38px bar. */
@@ -1902,11 +1902,11 @@ V2_CSS = r"""
     top: 0; bottom: 0;
     background: repeating-linear-gradient(
         135deg,
-        rgba(201, 100, 66, 0.18) 0 6px,
+        rgba(238, 186, 11, 0.18) 0 6px,
         transparent 6px 12px
     );
-    border-top: 1px solid rgba(201, 100, 66, 0.22);
-    border-bottom: 1px solid rgba(201, 100, 66, 0.22);
+    border-top: 1px solid rgba(238, 186, 11, 0.22);
+    border-bottom: 1px solid rgba(238, 186, 11, 0.22);
     pointer-events: none;
     transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1), left 600ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1953,7 +1953,7 @@ V2_CSS = r"""
     width: 2px;
     margin-left: -1px;
     background: linear-gradient(180deg, rgba(255, 211, 181, 0.8), var(--cc-accent) 40%, var(--cc-accent) 60%, rgba(255, 211, 181, 0.8));
-    box-shadow: 0 0 8px rgba(255, 138, 92, 0.6);
+    box-shadow: 0 0 8px rgba(238, 186, 11, 0.6);
     pointer-events: none;
     z-index: 4;
 }
@@ -1988,8 +1988,8 @@ V2_CSS = r"""
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .v2-ytr-card:hover {
-    border-color: rgba(201, 100, 66, 0.32);
-    box-shadow: 0 0 18px -8px rgba(201, 100, 66, 0.30);
+    border-color: rgba(238, 186, 11, 0.32);
+    box-shadow: 0 0 18px -8px rgba(238, 186, 11, 0.30);
 }
 .v2-ytr-head {
     display: flex;
@@ -2048,7 +2048,7 @@ V2_CSS = r"""
 .v2-chip.hit       { color: var(--good); border-color: rgba(143,185,122,0.4); }
 .v2-chip.steady    { color: var(--cc-fg-1); }
 .v2-chip.climbing  { color: var(--warn); border-color: rgba(217,165,102,0.4); }
-.v2-chip.miss      { color: var(--cc-accent); border-color: rgba(201,100,66,0.4); }
+.v2-chip.miss      { color: var(--cc-accent); border-color: rgba(238, 186, 11,0.4); }
 .v2-ytr-perfs {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -2094,8 +2094,8 @@ V2_CSS = r"""
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .v2-mb-tile:hover {
-    border-color: rgba(201, 100, 66, 0.32);
-    box-shadow: 0 0 14px -8px rgba(201, 100, 66, 0.30);
+    border-color: rgba(238, 186, 11, 0.32);
+    box-shadow: 0 0 14px -8px rgba(238, 186, 11, 0.30);
 }
 .v2-mb-tile .v2-mb-label {
     font-family: 'JetBrains Mono', monospace;
@@ -2130,15 +2130,15 @@ V2_CSS = r"""
 /* ── Schedule + Daily Drivers ─────────────────────────────── */
 .v2-panel {
     background: var(--bg-card);
-    border: 1px solid rgba(201, 100, 66, 0.28);
+    border: 1px solid rgba(238, 186, 11, 0.28);
     border-radius: 3px;
     padding: 14px 18px 16px;
-    box-shadow: 0 0 18px -8px rgba(201, 100, 66, 0.35);
+    box-shadow: 0 0 18px -8px rgba(238, 186, 11, 0.35);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .v2-panel:hover {
-    border-color: rgba(201, 100, 66, 0.45);
-    box-shadow: 0 0 22px -8px rgba(201, 100, 66, 0.50);
+    border-color: rgba(238, 186, 11, 0.45);
+    box-shadow: 0 0 22px -8px rgba(238, 186, 11, 0.50);
 }
 .v2-panel-head {
     font-family: 'JetBrains Mono', monospace;
@@ -2314,7 +2314,7 @@ V2_CSS = r"""
 }
 .v2-queue-dot.running {
     background: var(--cc-accent);
-    box-shadow: 0 0 0 2px rgba(219, 116, 70, 0.22), 0 0 8px rgba(219, 116, 70, 0.65);
+    box-shadow: 0 0 0 2px rgba(238, 186, 11, 0.22), 0 0 8px rgba(238, 186, 11, 0.65);
     animation: v2-blink 1.4s infinite;
 }
 .v2-queue-dot.done {
@@ -2351,14 +2351,14 @@ V2_CSS = r"""
 
 /* Quicknav pull pill — terracotta-tinted, matches status chip footprint */
 .quicknav .qn-pull {
-    background: rgba(219, 116, 70, 0.10);
+    background: rgba(238, 186, 11, 0.10);
     color: var(--cc-accent) !important;
-    border: 1px solid rgba(219, 116, 70, 0.32);
+    border: 1px solid rgba(238, 186, 11, 0.32);
 }
 .quicknav .qn-pull:hover {
-    background: rgba(219, 116, 70, 0.22);
-    border-color: rgba(219, 116, 70, 0.55);
-    box-shadow: 0 0 10px -2px rgba(219, 116, 70, 0.45);
+    background: rgba(238, 186, 11, 0.22);
+    border-color: rgba(238, 186, 11, 0.55);
+    box-shadow: 0 0 10px -2px rgba(238, 186, 11, 0.45);
 }
 
 /* ── Demo-mode pill ───────────────────────────────────────── */
@@ -2367,7 +2367,7 @@ V2_CSS = r"""
     padding: 2px 8px;
     background: var(--cc-accent-soft);
     color: var(--cc-accent);
-    border: 1px solid rgba(201,100,66,0.4);
+    border: 1px solid rgba(238, 186, 11,0.4);
     border-radius: 99px;
     font-size: 10px;
     letter-spacing: 0.18em;
@@ -3179,8 +3179,8 @@ st.markdown(
     '<div class="title-row">'
     '<h1 class="hero-title">'
     f'{_mascot_html}'
-    '<span class="hero-word">Agentic</span>'
-    '<em>OS</em>'
+    '<span class="hero-word">Be The</span>'
+    '<em>Light</em>'
     '</h1>'
     f'<div class="caption-mono title-crumb">vault · {VAULT_PATH.name} · plan · {CLAUDE_PLAN} · permission · {PERMISSION_MODE}'
     f'{"&nbsp;&nbsp;<span class=\"v2-demo-pill\">demo mode</span>" if getattr(_cfg, "DEMO_MODE", False) else ""}'
@@ -3218,7 +3218,7 @@ st.markdown(
     f"""
     <div class="quicknav">
         <a class="qn-claude" href="?action=terminal" target="_self">
-            <span class="qn-icon">◆</span>claude code<span class="qn-arrow">↗</span>
+            <span class="qn-icon">◆</span>BTL cockpit<span class="qn-arrow">↗</span>
         </a>
         <a href="{vault_uri}" target="_blank"><span class="qn-icon">✱</span>vault</a>
         <a href="{daily_note_uri}" target="_blank"><span class="qn-icon">§</span>daily note</a>
@@ -3910,7 +3910,7 @@ def render_yt_review_card(review: dict | None, tab_key: str = "audience") -> Non
             "Hit":       "#8fb97a",
             "Climbing":  "#d9a566",
             "Steady":    "#b0aea5",
-            "Miss":      "#c96442",
+            "Miss":      "#EEBA0B",
         }
         chart = (
             alt.Chart(df_up)
@@ -4379,9 +4379,9 @@ def _build_activity_svg(df: pd.DataFrame) -> str:
        preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="activityFill" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%"   stop-color="#c96442" stop-opacity="0.48"/>
-        <stop offset="60%"  stop-color="#c96442" stop-opacity="0.14"/>
-        <stop offset="100%" stop-color="#c96442" stop-opacity="0"/>
+        <stop offset="0%"   stop-color="#EEBA0B" stop-opacity="0.48"/>
+        <stop offset="60%"  stop-color="#EEBA0B" stop-opacity="0.14"/>
+        <stop offset="100%" stop-color="#EEBA0B" stop-opacity="0"/>
       </linearGradient>
       <filter id="pulseGlow" x="-200%" y="-200%" width="500%" height="500%">
         <feGaussianBlur stdDeviation="2.4" result="b1"/>
@@ -4405,7 +4405,7 @@ def _build_activity_svg(df: pd.DataFrame) -> str:
                dur="6s" repeatCount="indefinite"/>
     </path>
     <path id="activityPath" d="{line_d}" fill="none"
-          stroke="#c96442" stroke-width="1.6"
+          stroke="#EEBA0B" stroke-width="1.6"
           stroke-linejoin="round" stroke-linecap="round"
           vector-effect="non-scaling-stroke"
           filter="url(#lineGlow)"/>
@@ -4462,7 +4462,7 @@ st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 _layout_v = getattr(_cfg, "LAYOUT_VERSION", "v1")
 if _layout_v == "v2":
     overview_tab, audience_tab, research_tab = st.tabs([
-        "overview", "audience", "research",
+        "overview", "social", "skills",
     ])
 else:
     # v1 fallback — no tabs, single column. Defined as null context for indented block below.
@@ -4597,7 +4597,7 @@ with overview_tab:
             go.Bar(
                 x=_bar_labels,
                 y=_bar_vals,
-                marker=dict(color="#c96442", line=dict(width=0)),
+                marker=dict(color="#EEBA0B", line=dict(width=0)),
                 hovertemplate="<b>%{x}</b><br>%{y} runs<extra></extra>",
             )
         )
@@ -4611,7 +4611,7 @@ with overview_tab:
             bargap=0.32,
             hoverlabel=dict(
                 bgcolor="#0e0f10",
-                bordercolor="#c96442",
+                bordercolor="#EEBA0B",
                 font=dict(family="JetBrains Mono, monospace", color="#faf9f5", size=10),
             ),
             xaxis=dict(
