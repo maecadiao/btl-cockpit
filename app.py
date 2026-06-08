@@ -3179,8 +3179,8 @@ st.markdown(
     '<div class="title-row">'
     '<h1 class="hero-title">'
     f'{_mascot_html}'
-    '<span class="hero-word">Be The</span>'
-    '<em>Light</em>'
+    '<span class="hero-word">BE THE LIGHT DECOR</span>'
+    '<em> — AGENTIC OS</em>'
     '</h1>'
     f'<div class="caption-mono title-crumb">vault · {VAULT_PATH.name} · plan · {CLAUDE_PLAN} · permission · {PERMISSION_MODE}'
     f'{"&nbsp;&nbsp;<span class=\"v2-demo-pill\">demo mode</span>" if getattr(_cfg, "DEMO_MODE", False) else ""}'
@@ -4459,17 +4459,41 @@ if mcp_servers:
 
 st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 
+# ── BTL Quick Action Row ───────────────────────────────────────────────────────
+_BTL_QUICK = ["Inbox Digest", "Crew Brief", "KPI Digest", "Billing Digest", "Pipeline Review"]
+_BTL_SKILL_MAP = {s["label"]: s for s in SKILLS}
+
+def _btl_quick_run(label: str):
+    skill = _BTL_SKILL_MAP.get(label)
+    if skill:
+        start_skill_run(label, skill["prompt_template"])
+
+_qa_cols = st.columns(len(_BTL_QUICK), gap="small")
+for _qi, _ql in enumerate(_BTL_QUICK):
+    with _qa_cols[_qi]:
+        st.button(
+            _ql.upper(),
+            key=f"btl_qa_{_qi}",
+            use_container_width=True,
+            on_click=_btl_quick_run,
+            args=(_ql,),
+            help=_BTL_SKILL_MAP.get(_ql, {}).get("description", ""),
+        )
+
+st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
+
 _layout_v = getattr(_cfg, "LAYOUT_VERSION", "v1")
 if _layout_v == "v2":
-    overview_tab, audience_tab, research_tab = st.tabs([
-        "overview", "social", "skills",
+    overview_tab, ghl_tab, jobber_tab, social_tab, qbo_tab = st.tabs([
+        "overview", "ghl", "jobber", "social", "quickbooks",
     ])
 else:
-    # v1 fallback — no tabs, single column. Defined as null context for indented block below.
     from contextlib import nullcontext
     overview_tab = nullcontext()
-    audience_tab = nullcontext()
-    research_tab = nullcontext()
+    ghl_tab = nullcontext()
+    jobber_tab = nullcontext()
+    social_tab = nullcontext()
+    qbo_tab = nullcontext()
 
 with overview_tab:
 
@@ -5096,8 +5120,8 @@ with overview_tab:
             st.rerun()
 
 
-# ── v2 audience tab — Latest Upload + audience row + YtWeekReview marquee ──
-with audience_tab:
+# ── v2 social tab — Facebook + Instagram audience cards ──
+with social_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 
@@ -5117,9 +5141,51 @@ with audience_tab:
             _ytr = parse_yt_review()
             render_yt_review_card(_ytr, tab_key="audience")
 
-with research_tab:
+with ghl_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
-        if _enabled_cards.get("morning_brief", True):
-            _brief = parse_morning_brief()
-            render_morning_brief(_brief)
+        st.markdown("#### GHL Pipeline", unsafe_allow_html=False)
+        _ghl_cols = st.columns(3, gap="small")
+        _ghl_demo = [
+            ("Active Leads", getattr(_cfg, "DEMO_AUDIENCE", {}).get("active_leads", {}).get("value", 18), "contacts in pipeline"),
+            ("New Leads 7d", 5, "new inquiries this week"),
+            ("Pipeline Value", "$42,500", "estimated open opportunity"),
+        ]
+        for _i, (_title, _val, _desc) in enumerate(_ghl_demo):
+            with _ghl_cols[_i]:
+                st.metric(_title, _val, help=_desc)
+        st.markdown("---")
+        st.caption("🟡 Demo mode — connect GHL to see live pipeline data")
+
+with jobber_tab:
+    if _layout_v == "v2":
+        st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
+        st.markdown("#### Jobber Schedule", unsafe_allow_html=False)
+        _job_cols = st.columns(3, gap="small")
+        _job_demo = [
+            ("Jobs Today", getattr(_cfg, "DEMO_AUDIENCE", {}).get("jobs_today", {}).get("value", 3), "on the schedule today"),
+            ("Jobs This Week", 9, "confirmed installs + service"),
+            ("Crew Utilization", "87%", "of available crew hours booked"),
+        ]
+        for _i, (_title, _val, _desc) in enumerate(_job_demo):
+            with _job_cols[_i]:
+                st.metric(_title, _val, help=_desc)
+        st.markdown("---")
+        st.caption("🟡 Demo mode — connect Jobber to see live job data")
+
+with qbo_tab:
+    if _layout_v == "v2":
+        st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
+        st.markdown("#### QuickBooks Overview", unsafe_allow_html=False)
+        _qbo_cols = st.columns(4, gap="small")
+        _qbo_demo = [
+            ("Revenue MTD", f"${getattr(_cfg, 'DEMO_AUDIENCE', {}).get('revenue_mtd', {}).get('value', 24800):,}", "month-to-date revenue"),
+            ("Open Invoices", getattr(_cfg, "DEMO_AUDIENCE", {}).get("open_invoices", {}).get("value", 7), "awaiting payment"),
+            ("Net Profit MTD", "$8,240", "after expenses"),
+            ("AR Balance", "$14,600", "total outstanding"),
+        ]
+        for _i, (_title, _val, _desc) in enumerate(_qbo_demo):
+            with _qbo_cols[_i]:
+                st.metric(_title, _val, help=_desc)
+        st.markdown("---")
+        st.caption("🟡 Demo mode — connect QuickBooks to see live financial data")
