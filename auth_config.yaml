@@ -5,6 +5,26 @@ credentials:
       name: Admin
       password: $2b$12$Y5HRj3RqR4IhG4SlJi8SSuPiwauV1SOkU4H3ryy7F2yjPfY1JYgra
       role: admin
+    hunter:
+      email: info@bethelightdecor.com
+      name: Hunter Estess
+      password: $2b$12$EiuXBo8Gx7kBTbaRuHpLq.Tp6Q0V8G5FUr/VJPSq8Dse7O6sQKrXa
+      role: member
+    shella:
+      email: marketing@bethelightdecor.com
+      name: Shella Cadiao
+      password: $2b$12$psHxXvJobkM/m6XNpahmCePE0wrRngmrmKMmVlIaQSqNzIajyi8jS
+      role: member
+    maddi:
+      email: maddi@bethelightdecor.com
+      name: Maddi Lewis
+      password: $2b$12$uKzERfieKUg0LMmeE/GKEO3sifp44s1J.kny1jMBx/MPBZFPyzz.e
+      role: member
+    josh:
+      email: joshua@bethelightdecor.com
+      name: Josh Semple
+      password: $2b$12$.WmhXiqQ5uaZ4foendGU1u.I4v9bbOEzeC9KPU2Aztbee/mN16apG
+      role: member
 cookie:
   expiry_days: 30
   key: btl_cockpit_auth_key_2026
