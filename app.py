@@ -4668,7 +4668,7 @@ def parse_daily_note(date_iso: str | None = None) -> dict:
 
 
 def read_calendar_events() -> list[dict]:
-    """Read calendar-today.json written by runner's pull-calendar skill."""
+    """Return today's calendar events. Reads local file if available, otherwise calls Google Calendar API."""
     try:
         if CALENDAR_TODAY_JSON.exists():
             raw = json.loads(CALENDAR_TODAY_JSON.read_text(encoding="utf-8"))
@@ -4678,7 +4678,60 @@ def read_calendar_events() -> list[dict]:
             ]
     except (OSError, json.JSONDecodeError):
         pass
-    return []
+    return _read_calendar_api()
+
+
+@st.cache_data(ttl=300)
+def _read_calendar_api() -> list[dict]:
+    """Fetch today's events directly from Google Calendar API."""
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        client_id     = _read_env("GOOGLE_CALENDAR_CLIENT_ID")
+        client_secret = _read_env("GOOGLE_CALENDAR_CLIENT_SECRET")
+        refresh_token = _read_env("GOOGLE_CALENDAR_REFRESH_TOKEN")
+        calendar_id   = _read_env("GOOGLE_CALENDAR_ID") or "primary"
+        if not (client_id and client_secret and refresh_token):
+            return []
+
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_uri="https://oauth2.googleapis.com/token",
+        )
+        service = build("calendar", "v3", credentials=creds)
+
+        now = datetime.now(timezone.utc)
+        day_start = now.replace(hour=0,  minute=0,  second=0,  microsecond=0).isoformat()
+        day_end   = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
+
+        result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=day_start,
+            timeMax=day_end,
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
+
+        out = []
+        for e in result.get("items", []):
+            start = e.get("start", {})
+            dt_str = start.get("dateTime") or start.get("date", "")
+            time_label = ""
+            if "T" in dt_str:
+                try:
+                    from datetime import datetime as _dt
+                    dt = _dt.fromisoformat(dt_str)
+                    time_label = dt.strftime("%I:%M %p").lstrip("0")
+                except Exception:
+                    time_label = dt_str[11:16]
+            out.append({"time": time_label, "label": e.get("summary", "(no title)")})
+        return out
+    except Exception:
+        return []
 
 
 def _read_env(key: str) -> str:
