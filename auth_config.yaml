@@ -1,0 +1,11 @@
+credentials:
+  usernames:
+    admin:
+      email: admin@bethelightdecor.com
+      name: Admin
+      password: $2b$12$Y5HRj3RqR4IhG4SlJi8SSuPiwauV1SOkU4H3ryy7F2yjPfY1JYgra
+      role: admin
+cookie:
+  expiry_days: 30
+  key: btl_cockpit_auth_key_2026
+  name: btl_auth

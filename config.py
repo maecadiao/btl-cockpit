@@ -19,11 +19,13 @@ VAULT_NAME = "BTL Cockpit"
 
 # Skill runner — only works when the local runner is active.
 # On Streamlit Cloud this path won't exist; buttons show a friendly error.
-_local_cli = Path(r"C:\Users\labor\projects\my-cockpit\runner\enqueue.py")
-# BTL uses the Anthropic API runner, not claude.exe directly.
-# Skill button clicks write jobs to the queue; the runner processes them.
-# Set this to a no-op or the runner script path if direct CLI is needed.
-CLAUDE_CLI = _local_cli if _local_cli.exists() else Path("/usr/bin/true")
+_local_cli_bat = Path(r"C:\Users\labor\projects\my-cockpit\runner\enqueue.bat")
+_local_cli_py  = Path(r"C:\Users\labor\projects\my-cockpit\runner\enqueue.py")
+CLAUDE_CLI = (
+    _local_cli_bat if _local_cli_bat.exists() else
+    _local_cli_py  if _local_cli_py.exists()  else
+    Path("/usr/bin/true")
+)
 
 DAILY_NOTES_DIR  = VAULT_PATH / "daily-notes"
 RUNS_DIR         = VAULT_PATH / "system" / "runs"
@@ -63,7 +65,7 @@ ENABLED_CARDS = {
 
 # ── Demo mode ─────────────────────────────────────────────────────────────────
 
-DEMO_MODE = True   # flip to False once metrics.csv has live data
+DEMO_MODE = False  # live data from metrics.csv
 
 DEMO_USAGE = {
     "five_hour": {"input": 820_000, "output": 460_000, "total": 1_280_000, "sessions": 3},

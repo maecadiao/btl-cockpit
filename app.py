@@ -6,12 +6,17 @@ import json
 import time
 import shutil
 import base64
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
+import urllib.request
+import calendar as _cal_mod
 from itertools import groupby
 
+import os
+import yaml
 import streamlit as st
+import streamlit_authenticator as stauth
 import altair as alt
 import pandas as pd
 
@@ -33,6 +38,69 @@ from config import (
 import config as _cfg  # for getattr lookups (DEMO_MODE, ENABLED_CARDS, DEMO_*)
 
 st.set_page_config(page_title="BTL Cockpit", page_icon="◆", layout="wide")
+
+# ═══════════════════════════════════════════════════════════
+# AUTHENTICATION
+# ═══════════════════════════════════════════════════════════
+
+def _load_auth_config() -> dict:
+    """Load user credentials from auth_config.yaml or BTL_AUTH_CONFIG env var."""
+    env_yaml = os.environ.get("BTL_AUTH_CONFIG", "")
+    if env_yaml:
+        return yaml.safe_load(env_yaml)
+    cfg_path = Path(__file__).parent / "auth_config.yaml"
+    if cfg_path.exists():
+        return yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    return {
+        "credentials": {"usernames": {}},
+        "cookie": {"expiry_days": 30, "key": "btl_default_key", "name": "btl_auth"},
+    }
+
+_auth_cfg = _load_auth_config()
+_authenticator = stauth.Authenticate(
+    _auth_cfg["credentials"],
+    _auth_cfg["cookie"]["name"],
+    _auth_cfg["cookie"]["key"],
+    _auth_cfg["cookie"]["expiry_days"],
+)
+
+def _render_login_page():
+    st.markdown("""
+    <style>
+    [data-testid="stAppViewContainer"] { background: #0d0d12; }
+    [data-testid="stHeader"] { display: none; }
+    .login-wrap { max-width: 380px; margin: 8vh auto 0; }
+    .login-logo { font-size: 1.1rem; letter-spacing: 0.22em; text-transform: uppercase;
+        color: #eebc0b; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.2rem; }
+    .login-sub  { font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase;
+        color: #555; font-family: 'JetBrains Mono', monospace; margin-bottom: 2rem; }
+    </style>
+    <div class="login-wrap">
+      <div class="login-logo">◆ BTL Cockpit</div>
+      <div class="login-sub">Be The Light Decor · Team Portal</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+_render_login_page()
+_authenticator.login(location="main")
+
+if st.session_state.get("authentication_status") is False:
+    st.error("Username or password is incorrect.")
+    st.stop()
+elif not st.session_state.get("authentication_status"):
+    st.stop()
+
+# ── Authenticated — show logout in sidebar ───────────────
+with st.sidebar:
+    _auth_name = st.session_state.get("name", "Team")
+    st.markdown(
+        f'<div style="font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;'
+        f'color:#555;padding:0.6rem 0 0.2rem">signed in as</div>'
+        f'<div style="font-size:0.75rem;color:#eebc0b;margin-bottom:0.8rem">{_auth_name}</div>',
+        unsafe_allow_html=True,
+    )
+    _authenticator.logout(button_name="Sign Out", location="sidebar")
+    st.markdown("---")
 
 # ═══════════════════════════════════════════════════════════
 # GLOBAL RUNTIME (shared across reruns, lives in module scope)
@@ -1290,6 +1358,50 @@ hr.chapter::after { content: none; }
     letter-spacing: 0.06em;
     text-transform: uppercase;
 }
+.mon-inbox-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.28rem 0.1rem;
+    border-top: 1px solid var(--ring-soft);
+}
+.mon-inbox-row:first-of-type { border-top: none; }
+.mon-dot {
+    flex-shrink: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--fg-mute);
+}
+.mon-inbox-name {
+    flex: 1;
+    color: var(--fg);
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+    min-width: 0;
+}
+.mon-inbox-badge {
+    flex-shrink: 0;
+    font-size: 0.52rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    padding: 0.1rem 0.3rem;
+    box-shadow: 0 0 0 1px var(--ring-soft);
+    border-radius: 2px;
+}
+.mon-inbox-footer {
+    margin-top: 0.45rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--ring-soft);
+    text-align: right;
+    font-size: 0.56rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
 
 /* ─── Header bar — wraps the col row via :has() + hidden marker ─── */
 [data-testid="stVerticalBlock"]:has(> div > .cpt-header-marker),
@@ -1509,6 +1621,8 @@ V2_CSS = r"""
     --card-tone-tiktok-bd: rgba(0, 240, 255, 0.30);
     --card-tone-claude:    rgba(238, 186, 11, 0.10);
     --card-tone-claude-bd: rgba(238, 186, 11, 0.36);
+    --card-tone-facebook:    rgba(24, 119, 242, 0.10);
+    --card-tone-facebook-bd: rgba(24, 119, 242, 0.32);
 }
 
 /* All v2 cards use tabular numerics so values lock to a grid */
@@ -1663,6 +1777,7 @@ V2_CSS = r"""
 .v2-audience-card[data-tone="instagram"] { background: linear-gradient(135deg, var(--card-tone-instagram) 0%, var(--bg-card) 70%); border-color: var(--card-tone-instagram-bd); }
 .v2-audience-card[data-tone="tiktok"]    { background: linear-gradient(135deg, var(--card-tone-tiktok) 0%, var(--bg-card) 70%); border-color: var(--card-tone-tiktok-bd); }
 .v2-audience-card[data-tone="claude"]    { background: linear-gradient(135deg, var(--card-tone-claude) 0%, var(--bg-card) 70%); border-color: var(--card-tone-claude-bd); }
+.v2-audience-card[data-tone="facebook"]  { background: linear-gradient(135deg, var(--card-tone-facebook) 0%, var(--bg-card) 70%); border-color: var(--card-tone-facebook-bd); }
 .v2-audience-watermark {
     position: absolute;
     right: -6px;
@@ -1708,6 +1823,188 @@ V2_CSS = r"""
     color: var(--cc-fg-2);
     letter-spacing: 0.05em;
     text-transform: lowercase;
+}
+
+/* ── Facebook posts grid ───────────────────────────────────── */
+.fb-posts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin-top: 0.8rem;
+}
+@media (max-width: 900px) {
+    .fb-posts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.fb-post-card {
+    background: var(--bg-card);
+    border: 1px solid var(--ring-soft);
+    border-radius: 3px;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+    text-decoration: none;
+    display: block;
+}
+.fb-post-card:hover {
+    border-color: rgba(24, 119, 242, 0.45);
+    transform: translateY(-1px);
+}
+.fb-post-img {
+    width: 100%;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    display: block;
+    background: var(--bg-elev);
+}
+.fb-post-body {
+    padding: 0.55rem 0.65rem 0.5rem;
+}
+.fb-post-msg {
+    color: var(--fg);
+    font-size: 0.7rem;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    letter-spacing: 0.01em;
+    min-height: 2.8rem;
+}
+.fb-post-meta {
+    display: flex;
+    gap: 0.8rem;
+    margin-top: 0.4rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+}
+.fb-post-stat { color: var(--fg-dim); }
+
+/* ── Post scheduler panel ───────────────────────────────────── */
+.sched-panel-head {
+    font-size: 0.58rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    margin-bottom: 0.5rem;
+}
+.sched-queue-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 0.65rem;
+    align-items: start;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--ring-soft);
+}
+.sched-queue-item:first-child { border-top: none; }
+.sched-queue-time {
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    white-space: nowrap;
+    padding-top: 0.05rem;
+    min-width: 5rem;
+}
+.sched-queue-msg {
+    font-size: 0.72rem;
+    color: var(--fg);
+    line-height: 1.4;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.sched-queue-empty {
+    color: var(--fg-mute);
+    font-size: 0.68rem;
+    padding: 0.6rem 0;
+}
+.sched-cal-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--ring-soft);
+    border-radius: 3px;
+    padding: 0.65rem 0.7rem 0.5rem;
+}
+.sched-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+    margin-bottom: 0.5rem;
+}
+.sched-cal-dow {
+    font-size: 0.48rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    text-align: center;
+    padding-bottom: 0.25rem;
+}
+.sched-cal-cell {
+    min-height: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    font-size: 0.6rem;
+    color: var(--fg-dim);
+    gap: 2px;
+    cursor: default;
+}
+.sched-cal-cell.dim { color: var(--fg-mute); opacity: 0.3; }
+.sched-cal-cell.today {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+    box-shadow: 0 0 0 1px rgba(238,186,11,0.35);
+}
+.sched-cal-cell.has-post {
+    background: rgba(24,119,242,0.12);
+    box-shadow: 0 0 0 1px rgba(24,119,242,0.35);
+    color: var(--fg);
+}
+.sched-cal-cell.today.has-post {
+    background: linear-gradient(135deg, rgba(238,186,11,0.14), rgba(24,119,242,0.12));
+    box-shadow: 0 0 0 1px rgba(238,186,11,0.4);
+    color: var(--accent);
+}
+.sched-cal-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(24,119,242,0.85);
+}
+.sched-cal-post {
+    border-top: 1px solid var(--ring-soft);
+    padding: 0.42rem 0;
+}
+.sched-cal-post:first-of-type { border-top: none; margin-top: 0.3rem; }
+.sched-cal-post-date {
+    font-size: 0.52rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.15rem;
+}
+.sched-cal-post-msg {
+    font-size: 0.68rem;
+    color: var(--fg);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.sched-perm-warn {
+    background: rgba(217, 165, 102, 0.08);
+    border: 1px solid rgba(217, 165, 102, 0.30);
+    border-radius: 3px;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.68rem;
+    color: var(--warn);
+    line-height: 1.5;
+    margin-bottom: 0.6rem;
 }
 
 /* ── TokenBurn marquee (mirrors Obsidian cockpit) ───────────── */
@@ -2521,6 +2818,42 @@ def obsidian_uri(vault_path: Path) -> str:
     return f"obsidian://open?vault={quote(VAULT_NAME)}&file={quote(rel)}"
 
 
+def run_view_uri(vault_path: Path) -> str:
+    rel = vault_path.relative_to(VAULT_PATH).as_posix()
+    return f"?run={quote(rel)}"
+
+
+def _get_5h_window_start() -> datetime | None:
+    """Return the earliest message timestamp in the last 5h JSONL window."""
+    projects_dir = Path.home() / ".claude" / "projects"
+    if not projects_dir.exists():
+        return None
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=5)
+    earliest: datetime | None = None
+    for jsonl_file in projects_dir.glob("**/*.jsonl"):
+        try:
+            for raw in jsonl_file.open("r", encoding="utf-8", errors="replace"):
+                if '"usage"' not in raw:
+                    continue
+                try:
+                    obj = json.loads(raw.strip())
+                except json.JSONDecodeError:
+                    continue
+                ts_str = obj.get("timestamp", "")
+                if not ts_str:
+                    continue
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    if ts >= cutoff:
+                        if earliest is None or ts < earliest:
+                            earliest = ts
+                except Exception:
+                    continue
+        except OSError:
+            continue
+    return earliest
+
+
 def open_claude_terminal() -> None:
     wt = Path(r"C:\Users\Chase\AppData\Local\Microsoft\WindowsApps\wt.exe")
     if wt.exists():
@@ -2860,6 +3193,54 @@ def _read_session_metas() -> list[dict]:
     return out
 
 
+def _read_usage_from_jsonl(hours: float = 5.0) -> dict:
+    """Sum token usage from Claude Code JSONL session files for the last N hours.
+
+    Deduplicates by message.id so subagent files don't double-count.
+    Returns output_tokens (what Anthropic actually rate-limits on the 5h window).
+    """
+    projects_dir = Path.home() / ".claude" / "projects"
+    if not projects_dir.exists():
+        return {"output": 0, "input": 0, "cache_creation": 0}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    seen: set[str] = set()
+    totals = {"output": 0, "input": 0, "cache_creation": 0}
+    for jsonl_file in projects_dir.glob("**/*.jsonl"):
+        try:
+            for raw in jsonl_file.open("r", encoding="utf-8", errors="replace"):
+                raw = raw.strip()
+                if not raw or '"usage"' not in raw:
+                    continue
+                try:
+                    obj = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                ts_str = obj.get("timestamp", "")
+                if not ts_str:
+                    continue
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    if ts < cutoff:
+                        continue
+                except Exception:
+                    continue
+                msg = obj.get("message") or {}
+                usage = msg.get("usage") or {}
+                if not usage:
+                    continue
+                msg_id = msg.get("id", "")
+                if msg_id:
+                    if msg_id in seen:
+                        continue
+                    seen.add(msg_id)
+                totals["output"] += usage.get("output_tokens", 0) or 0
+                totals["input"] += usage.get("input_tokens", 0) or 0
+                totals["cache_creation"] += usage.get("cache_creation_input_tokens", 0) or 0
+        except OSError:
+            continue
+    return totals
+
+
 def _parse_session_time(d: dict) -> datetime | None:
     t = d.get("start_time")
     if not t:
@@ -3167,6 +3548,84 @@ elif _action_q == "pull-latest":
         st.toast(f"pull failed: {e}", icon="⚠️")
     st.query_params.clear()
 
+# Runs / Drafts folder viewers
+_view_q = st.query_params.get("view")
+if _view_q in ("runs", "drafts"):
+    _is_drafts = _view_q == "drafts"
+    _folder_title = "DRAFTS" if _is_drafts else "RUN RESULTS"
+    _folder_dir = DRAFTS_AWAITING if _is_drafts else RUNS_DIR
+    _files = sorted(
+        _folder_dir.glob("**/*.md") if _folder_dir.exists() else [],
+        key=lambda p: p.stat().st_mtime, reverse=True
+    )[:50]
+    st.markdown(
+        f'<div style="padding:1.5rem 0 0.5rem 0">'
+        f'<span style="font-family:monospace;font-size:0.75rem;color:#888;letter-spacing:0.12em">§ {_folder_title}</span></div>',
+        unsafe_allow_html=True,
+    )
+    if not _files:
+        st.markdown("_No files yet._")
+    for _f in _files:
+        _mtime = datetime.fromtimestamp(_f.stat().st_mtime)
+        _label = _f.stem.split("-", 2)[-1].replace("-", " ")
+        _rel = _f.relative_to(VAULT_PATH).as_posix()
+        st.markdown(
+            f'<div style="padding:0.3rem 0;border-bottom:1px solid #222">'
+            f'<a href="?run={quote(_rel)}" style="color:#EEBA0B;text-decoration:none">{html_escape(_label)}</a>'
+            f'<span style="color:#555;font-size:0.75rem;margin-left:1rem">{_mtime.strftime("%Y-%m-%d %H:%M")}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown(
+        '<div style="margin-top:2rem"><a href="/" style="color:#888;font-size:0.8rem;text-decoration:none">← back to dashboard</a></div>',
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
+# Run viewer — renders a skill run result inline when ?run=<path> is present.
+# Opens in a new tab from the RECENT RUNS card; works for all users, no Obsidian needed.
+_run_q = st.query_params.get("run")
+if _run_q:
+    try:
+        _run_path = (VAULT_PATH / _run_q).resolve()
+        # Safety: must stay inside the vault
+        _run_path.relative_to(VAULT_PATH.resolve())
+        if _run_path.exists() and _run_path.suffix == ".md":
+            _raw = _run_path.read_text(encoding="utf-8")
+            # Parse frontmatter for skill + time
+            _fm_match = re.search(r"^---\n(.*?)\n---", _raw, re.DOTALL)
+            _fm = {}
+            if _fm_match:
+                for _line in _fm_match.group(1).splitlines():
+                    if ":" in _line:
+                        _k, _, _v = _line.partition(":")
+                        _fm[_k.strip()] = _v.strip()
+            _body = re.sub(r"^---\n.*?\n---\n*", "", _raw, flags=re.DOTALL).strip()
+            _skill_label = _fm.get("skill", _run_path.stem.split("-", 2)[-1].replace("-", " ")).upper()
+            _run_time = _fm.get("time", "")
+            st.markdown(
+                f"""<div style="padding:1.5rem 0 0.5rem 0">
+                <span style="font-family:monospace;font-size:0.75rem;color:#888;letter-spacing:0.12em">
+                § RUN RESULT
+                </span><br>
+                <span style="font-size:1.4rem;font-weight:700;color:#EEBA0B;letter-spacing:0.06em">
+                {html_escape(_skill_label)}
+                </span>
+                <span style="font-size:0.8rem;color:#888;margin-left:1rem">{html_escape(_run_time)}</span>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+            st.markdown(_body)
+            st.markdown(
+                '<div style="margin-top:2rem">'
+                '<a href="/" style="color:#888;font-size:0.8rem;text-decoration:none">'
+                '← back to dashboard</a></div>',
+                unsafe_allow_html=True,
+            )
+            st.stop()
+    except (ValueError, OSError):
+        st.query_params.clear()
+
 if MASCOT_IDLE_URL:
     _mascot_html = (
         f'<span class="mascot" '
@@ -3197,10 +3656,9 @@ st.markdown(
 today_note = today_daily_note()
 today_runs_dir = RUNS_DIR / date.today().isoformat()
 
-vault_uri = f"obsidian://open?vault={quote(VAULT_NAME)}"
-daily_note_uri = obsidian_uri(today_note) if today_note.exists() else vault_uri
-runs_folder_uri = f"obsidian://open?vault={quote(VAULT_NAME)}&file={quote('dashboard-runs')}"
-drafts_folder_uri = f"obsidian://open?vault={quote(VAULT_NAME)}&file={quote('drafts/awaiting')}"
+daily_note_uri = run_view_uri(today_note) if today_note.exists() else "?view=runs"
+runs_folder_uri = "?view=runs"
+drafts_folder_uri = "?view=drafts"
 
 if st.session_state.running:
     _active = st.session_state.active_skill or "skill"
@@ -3217,13 +3675,12 @@ else:
 st.markdown(
     f"""
     <div class="quicknav">
-        <a class="qn-claude" href="?action=terminal" target="_self">
+        <a class="qn-claude" href="/" target="_self">
             <span class="qn-icon">◆</span>BTL cockpit<span class="qn-arrow">↗</span>
         </a>
-        <a href="{vault_uri}" target="_blank"><span class="qn-icon">✱</span>vault</a>
         <a href="{daily_note_uri}" target="_blank"><span class="qn-icon">§</span>daily note</a>
-        <a href="{runs_folder_uri}" target="_blank"><span class="qn-icon">¶</span>runs folder</a>
-        <a href="{drafts_folder_uri}" target="_blank"><span class="qn-icon">※</span>drafts</a>
+        <a href="{runs_folder_uri}" target="_self"><span class="qn-icon">¶</span>runs folder</a>
+        <a href="{drafts_folder_uri}" target="_self"><span class="qn-icon">※</span>drafts</a>
         <a class="qn-pull" href="?action=pull-latest" target="_self" title="Queue /metrics-pull skill"><span class="qn-icon">↻</span>pull</a>
         {_status_html}
     </div>
@@ -3299,6 +3756,7 @@ def render_gauge(
 LATEST_VIDEO_JSON = VAULT_PATH / "system" / "metrics" / "latest-video.json"
 METRICS_CSV = VAULT_PATH / "system" / "metrics" / "metrics.csv"
 LAST_PULL_JSON = VAULT_PATH / "system" / "metrics" / "last-pull.json"
+CALENDAR_TODAY_JSON = VAULT_PATH / "system" / "metrics" / "calendar-today.json"
 
 
 def read_claude_5h_billable() -> tuple[int | None, str | None]:
@@ -3357,10 +3815,13 @@ def read_audience_metrics() -> dict:
     demo = getattr(_cfg, "DEMO_AUDIENCE", None) or {}
     # canonical keys we surface as cards
     keys = {
-        "youtube_subs":        ("youtube",   "subscribers"),
-        "youtube_views_28d":   ("youtube",   "views_28d"),
-        "instagram_followers": ("instagram", "followers"),
-        "tiktok_followers":    ("tiktok",    "followers"),
+        "youtube_subs":          ("youtube",   "subscribers"),
+        "youtube_views_28d":     ("youtube",   "views_28d"),
+        "instagram_followers":   ("instagram", "followers"),
+        "tiktok_followers":      ("tiktok",    "followers"),
+        "facebook_followers":    ("facebook",  "followers"),
+        "facebook_total_likes":  ("facebook",  "total_likes"),
+        "facebook_total_posts":  ("facebook",  "total_posts"),
     }
     if demo_on:
         return {k: dict(demo[k]) for k in keys if k in demo}
@@ -3392,6 +3853,30 @@ def read_audience_metrics() -> dict:
     for k in keys:
         if k not in out and k in demo:
             out[k] = dict(demo[k])
+    return out
+
+
+def _read_csv_latest(pairs: list[tuple[str, str]]) -> dict[tuple[str, str], float]:
+    """Read the latest value for each (source, metric) pair from metrics.csv."""
+    out: dict[tuple[str, str], float] = {}
+    try:
+        if METRICS_CSV.exists():
+            with METRICS_CSV.open("r", encoding="utf-8") as f:
+                f.readline()  # skip header
+                for line in f:
+                    parts = line.rstrip("\n").split(",")
+                    if len(parts) < 4:
+                        continue
+                    ts, source, metric = parts[0], parts[1], parts[2]
+                    try:
+                        val = float(parts[3])
+                    except ValueError:
+                        continue
+                    key = (source, metric)
+                    if key in {p for p in pairs}:
+                        out[key] = val
+    except OSError:
+        pass
     return out
 
 
@@ -3521,13 +4006,14 @@ def render_audience_card(label: str, tone: str, watermark: str, metric: dict | N
 
 def render_audience_row() -> None:
     aud = read_audience_metrics()
-    cols = st.columns(4, gap="small")
     cards = [
-        ("youtube subs",  "youtube",   "YT",  "youtube_subs",        ""),
-        ("youtube views · 28d", "youtube", "▶",  "youtube_views_28d",   ""),
-        ("instagram",     "instagram", "IG",  "instagram_followers", ""),
-        ("tiktok",        "tiktok",    "TT",  "tiktok_followers",    ""),
+        ("facebook",        "facebook",  "FB",  "facebook_followers",   ""),
+        ("fb · total likes","facebook",  "♥",   "facebook_total_likes", ""),
+        ("instagram",       "instagram", "IG",  "instagram_followers",  ""),
+        ("tiktok",          "tiktok",    "TT",  "tiktok_followers",     ""),
+        ("youtube subs",    "youtube",   "YT",  "youtube_subs",         ""),
     ]
+    cols = st.columns(len(cards), gap="small")
     for col, (label, tone, mark, key, suf) in zip(cols, cards):
         with col:
             st.markdown(
@@ -3863,7 +4349,7 @@ def render_yt_review_card(review: dict | None, tab_key: str = "audience") -> Non
 
     window = html_escape(review.get("window") or "")
     review_path = Path(review["meta"].get("path", ""))
-    full_uri = obsidian_uri(review_path) if review_path.exists() else "#"
+    full_uri = run_view_uri(review_path) if review_path.exists() else "#"
 
     # Header — title + actions row
     st.markdown(
@@ -4143,7 +4629,7 @@ def render_morning_brief(brief: dict | None) -> None:
 
     brief_path = Path(brief["path"])
     if brief_path.exists():
-        uri = obsidian_uri(brief_path)
+        uri = run_view_uri(brief_path)
         st.markdown(
             f'<div style="text-align:right;font-size:0.65rem;margin-top:0.3rem">'
             f'<a href="{uri}" target="_blank" style="color:var(--accent);text-decoration:none;letter-spacing:0.1em">FULL ↗</a>'
@@ -4179,6 +4665,279 @@ def parse_daily_note(date_iso: str | None = None) -> dict:
         if m:
             out["drivers"].append({"done": m.group(1).lower() == "x", "label": m.group(2).strip()})
     return out
+
+
+def read_calendar_events() -> list[dict]:
+    """Read calendar-today.json written by runner's pull-calendar skill."""
+    try:
+        if CALENDAR_TODAY_JSON.exists():
+            raw = json.loads(CALENDAR_TODAY_JSON.read_text(encoding="utf-8"))
+            return [
+                {"time": e.get("time", ""), "label": e.get("title", e.get("label", ""))}
+                for e in raw if e.get("title") or e.get("label")
+            ]
+    except (OSError, json.JSONDecodeError):
+        pass
+    return []
+
+
+def _read_env(key: str) -> str:
+    """Return env var value. Checks os.environ first (Railway/cloud), then ~/.claude/.env (local)."""
+    val = os.environ.get(key, "")
+    if val:
+        return val
+    env_path = Path.home() / ".claude" / ".env"
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                if k.strip() == key:
+                    return v.strip()
+    except OSError:
+        pass
+    return ""
+
+
+@st.cache_data(ttl=120)
+def read_monday_inbox(limit: int = 15) -> list[dict]:
+    """Fetch live items from Monday.com Team Inbox board (ID 18413165283)."""
+    api_key = _read_env("MONDAY_API_KEY")
+    if not api_key:
+        return []
+    query = """{
+  boards(ids: 18413165283) {
+    groups(ids: "group_mksn608j") {
+      items_page(limit: %d) {
+        items {
+          id name url
+          column_values(ids: ["status","color_mkskt2fs","person","date_mksp5t88"]) {
+            id text
+          }
+        }
+      }
+    }
+  }
+}""" % limit
+    try:
+        payload = json.dumps({"query": query}).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.monday.com/v2",
+            data=payload,
+            headers={
+                "Authorization": api_key,
+                "Content-Type": "application/json",
+                "API-Version": "2024-01",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        items_raw = (
+            data.get("data", {})
+                .get("boards", [{}])[0]
+                .get("groups", [{}])[0]
+                .get("items_page", {})
+                .get("items", [])
+        )
+        out = []
+        for item in items_raw:
+            cols = {c["id"]: c["text"] for c in item.get("column_values", [])}
+            out.append({
+                "id": item["id"],
+                "name": item["name"],
+                "url": item.get("url", ""),
+                "status": cols.get("status", ""),
+                "priority": cols.get("color_mkskt2fs", ""),
+                "person": cols.get("person", ""),
+                "due": cols.get("date_mksp5t88", ""),
+            })
+        return out
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=300)
+def read_facebook_posts(limit: int = 9) -> list[dict]:
+    """Fetch recent Facebook Page posts with likes + comments counts."""
+    user_token = _read_env("FB_PAGE_ACCESS_TOKEN")
+    page_id    = _read_env("FB_PAGE_ID")
+    if not user_token or not page_id:
+        return []
+    base = "https://graph.facebook.com/v19.0"
+
+    def fb_get(path: str, token: str, params: dict | None = None) -> dict:
+        p = {"access_token": token}
+        if params:
+            p.update(params)
+        qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in p.items())
+        req = urllib.request.Request(f"{base}{path}?{qs}")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read())
+
+    try:
+        # Exchange user token → page access token (needed for post data)
+        page_r = fb_get(f"/{page_id}", user_token, {"fields": "access_token"})
+        page_token = page_r.get("access_token") or user_token
+
+        posts_r = fb_get(f"/{page_id}/posts", page_token, {
+            "fields": "message,created_time,full_picture,permalink_url,"
+                      "likes.summary(true),comments.summary(true)",
+            "limit": limit,
+        })
+        out = []
+        for p in posts_r.get("data", []):
+            msg = (p.get("message") or "").strip()
+            out.append({
+                "id":        p.get("id", ""),
+                "message":   msg,
+                "url":       p.get("permalink_url", ""),
+                "image":     p.get("full_picture", ""),
+                "created":   p.get("created_time", ""),
+                "likes":     int(p.get("likes", {}).get("summary", {}).get("total_count", 0) or 0),
+                "comments":  int(p.get("comments", {}).get("summary", {}).get("total_count", 0) or 0),
+            })
+        return out
+    except Exception:
+        return []
+
+
+def _fb_page_token() -> tuple[str, str]:
+    """Return (page_id, page_access_token). Raises on failure."""
+    user_token = _read_env("FB_PAGE_ACCESS_TOKEN")
+    page_id    = _read_env("FB_PAGE_ID")
+    if not user_token or not page_id:
+        raise RuntimeError("Missing FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID in ~/.claude/.env")
+    base = "https://graph.facebook.com/v19.0"
+    p = {"access_token": user_token, "fields": "access_token"}
+    qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in p.items())
+    req = urllib.request.Request(f"{base}/{page_id}?{qs}")
+    with urllib.request.urlopen(req, timeout=15) as r:
+        data = json.loads(r.read())
+    page_token = data.get("access_token") or user_token
+    return page_id, page_token
+
+
+@st.cache_data(ttl=60)
+def read_facebook_scheduled() -> list[dict]:
+    """Fetch currently scheduled posts from the Facebook Page."""
+    try:
+        page_id, page_token = _fb_page_token()
+        base = "https://graph.facebook.com/v19.0"
+        p = {
+            "access_token": page_token,
+            "fields": "message,scheduled_publish_time,full_picture,permalink_url",
+            "limit": 10,
+        }
+        qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in p.items())
+        req = urllib.request.Request(f"{base}/{page_id}/scheduled_posts?{qs}")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        out = []
+        for post in data.get("data", []):
+            out.append({
+                "id":       post.get("id", ""),
+                "message":  (post.get("message") or "").strip(),
+                "sched_ts": post.get("scheduled_publish_time", ""),
+                "image":    post.get("full_picture", ""),
+                "url":      post.get("permalink_url", ""),
+            })
+        return out
+    except Exception:
+        return []
+
+
+def _fb_multipart(page_id: str, endpoint: str, page_token: str,
+                   fields: dict, file_bytes: bytes, filename: str, mime: str) -> dict:
+    """POST multipart/form-data with one file attachment to a Facebook endpoint."""
+    boundary = b"BTL_BOUND_42"
+    parts: list[bytes] = []
+    for name, val in {**fields, "access_token": page_token}.items():
+        parts += [
+            b"--" + boundary + b"\r\n",
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+            (val.encode() if isinstance(val, str) else val) + b"\r\n",
+        ]
+    parts += [
+        b"--" + boundary + b"\r\n",
+        f'Content-Disposition: form-data; name="source"; filename="{filename}"\r\n'.encode(),
+        f"Content-Type: {mime}\r\n\r\n".encode(),
+        file_bytes + b"\r\n",
+        b"--" + boundary + b"--\r\n",
+    ]
+    body = b"".join(parts)
+    base = "https://graph.facebook.com/v19.0"
+    req = urllib.request.Request(f"{base}/{page_id}/{endpoint}", data=body, method="POST")
+    req.add_header("Content-Type", f"multipart/form-data; boundary={boundary.decode()}")
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.loads(r.read())
+
+
+def _fb_mime(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower()
+    return {
+        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "png": "image/png", "gif": "image/gif",
+        "mp4": "video/mp4", "mov": "video/quicktime",
+    }.get(ext, "application/octet-stream")
+
+
+def publish_facebook_post(
+    message: str,
+    scheduled_unix: int | None,
+    link: str = "",
+    file_bytes: bytes | None = None,
+    filename: str = "",
+) -> dict:
+    """Publish or schedule a Facebook Page post, optionally with a photo/video."""
+    try:
+        page_id, page_token = _fb_page_token()
+        base = "https://graph.facebook.com/v19.0"
+        is_video = filename.lower().endswith((".mp4", ".mov"))
+
+        # ── Video post ────────────────────────────────────────────────
+        if file_bytes and is_video:
+            fields: dict[str, str] = {"description": message}
+            if scheduled_unix:
+                fields["published"] = "false"
+                fields["scheduled_publish_time"] = str(scheduled_unix)
+            else:
+                fields["published"] = "true"
+            result = _fb_multipart(page_id, "videos", page_token,
+                                   fields, file_bytes, filename, _fb_mime(filename))
+            return {"ok": True, "post_id": result.get("id", "")}
+
+        # ── Photo: upload first, then attach to feed post ─────────────
+        photo_id = ""
+        if file_bytes and not is_video:
+            photo_r = _fb_multipart(page_id, "photos", page_token,
+                                    {"published": "false"},
+                                    file_bytes, filename, _fb_mime(filename))
+            photo_id = photo_r.get("id", "")
+
+        # ── Feed post (text / link / attached photo) ──────────────────
+        data: dict[str, str] = {"message": message}
+        if scheduled_unix:
+            data["published"] = "false"
+            data["scheduled_publish_time"] = str(scheduled_unix)
+        else:
+            data["published"] = "true"
+        if link.strip():
+            data["link"] = link.strip()
+        if photo_id:
+            data["attached_media"] = json.dumps([{"media_fbid": photo_id}])
+        data["access_token"] = page_token
+        payload = urllib.parse.urlencode(data).encode("utf-8")
+        req = urllib.request.Request(f"{base}/{page_id}/feed", data=payload, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            result = json.loads(r.read())
+        return {"ok": True, "post_id": result.get("id", "")}
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")[:400]
+        return {"ok": False, "error": f"HTTP {e.code}: {body}"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:400]}
 
 
 def render_schedule_panel(events: list[dict]) -> str:
@@ -4272,16 +5031,24 @@ def render_daily_drivers_widget(drivers: list[dict], date_iso: str) -> None:
     )
 
 
+# Derive reset time from JSONL window start when rate_limits isn't populated
+_jsonl_window_start = _get_5h_window_start()
 five_h_reset = (rate_limits.get("five_hour") or {}).get("resets_at")
+if five_h_reset is None and _jsonl_window_start:
+    five_h_reset = _jsonl_window_start.timestamp() + 5 * 3600
 week_reset = (rate_limits.get("weekly") or {}).get("resets_at")
 
 five_h_tokens = usage["five_hour"]["total"]
-# Prefer metrics.csv `claude_code/billable_5h` row when present — that's the
-# authoritative Anthropic-billed 5h count (matches claude.ai dev page).
-# Falls back to legacy session-meta scan when no metrics-pull row exists.
+# Priority 1: metrics.csv claude_code/tokens_5h row (written by /metrics-pull skill).
+# Priority 2: live scan of JSONL session files (always current, no skill needed).
+# Priority 3: legacy session-meta scan (fallback if neither above applies).
 _billable_5h, _billable_ts = read_claude_5h_billable()
 if _billable_5h is not None and not getattr(_cfg, "DEMO_MODE", False):
     five_h_tokens = _billable_5h
+elif not getattr(_cfg, "DEMO_MODE", False):
+    _jsonl_usage = _read_usage_from_jsonl(hours=5.0)
+    if _jsonl_usage["output"] > 0:
+        five_h_tokens = _jsonl_usage["output"]
 week_tokens = usage["weekly"]["total"]
 routines_today = usage["today"]["routines"]
 today_runs = usage["today"]["runs"]
@@ -4507,7 +5274,8 @@ with overview_tab:
         _sd_cols = st.columns(2, gap="small")
         with _sd_cols[0]:
             if _show_sched:
-                st.markdown(render_schedule_panel(_daily["schedule"]), unsafe_allow_html=True)
+                _sched_events = _daily["schedule"] or read_calendar_events()
+                st.markdown(render_schedule_panel(_sched_events), unsafe_allow_html=True)
         with _sd_cols[1]:
             if _show_drv:
                 render_daily_drivers_widget(_daily["drivers"], _today_iso)
@@ -4562,9 +5330,9 @@ with overview_tab:
                     if deliverable_full.exists():
                         try:
                             link_inner = (
-                                f'<a href="{obsidian_uri(deliverable_full)}" '
+                                f'<a href="{run_view_uri(deliverable_full)}" '
                                 f'target="_blank" class="v2-queue-link" '
-                                f'title="open deliverable">open ↗</a>'
+                                f'title="open result">open ↗</a>'
                             )
                         except Exception:
                             link_inner = ""
@@ -4592,7 +5360,7 @@ with overview_tab:
             for r in runs:
                 mtime = datetime.fromtimestamp(r.stat().st_mtime)
                 label = r.stem.split("-", 2)[-1].replace("-", " ")
-                uri = obsidian_uri(r)
+                uri = run_view_uri(r)
                 card_html += (
                     f'<div class="run-row">'
                     f'<span class="run-time">{mtime.strftime("%H:%M")}</span>'
@@ -4653,10 +5421,24 @@ with overview_tab:
         _cap = LIMITS["five_hour_tokens"]
         _used = five_h_tokens
         _remaining = max(0, _cap - _used)
-        _reset_in_sec = max(0, int(five_h_reset - time.time())) if five_h_reset else 0
-        _reset_in_min = _reset_in_sec // 60
-        _window_min = 300  # 5h
-        _elapsed_min = max(1, _window_min - _reset_in_min) if _reset_in_min else 1
+        _window_min = 300  # 5h = 300 min
+
+        # Derive elapsed time from JSONL data (when was the first message in this window?)
+        _window_start = _get_5h_window_start()
+        if _window_start:
+            _elapsed_sec_raw = (datetime.now(timezone.utc) - _window_start).total_seconds()
+            _elapsed_min = max(1, min(_window_min, int(_elapsed_sec_raw / 60)))
+            _reset_unix = _window_start.timestamp() + 5 * 3600
+            _reset_in_sec = max(0, int(_reset_unix - time.time()))
+            _reset_in_min = _reset_in_sec // 60
+        elif five_h_reset:
+            _reset_in_sec = max(0, int(five_h_reset - time.time()))
+            _reset_in_min = _reset_in_sec // 60
+            _elapsed_min = max(1, _window_min - _reset_in_min)
+        else:
+            _elapsed_min = _window_min  # assume full window elapsed if no data
+            _reset_in_min = 0
+
         _burn_per_min = (_used / _elapsed_min) if _elapsed_min > 0 else 0
         _exhaust_in_min = int(_remaining / _burn_per_min) if _burn_per_min > 0 else None
         _will_exhaust = _exhaust_in_min is not None and _exhaust_in_min < _reset_in_min
@@ -4681,12 +5463,16 @@ with overview_tab:
             if _burn_per_min > 0 else 'burn · idle'
         )
 
-        # Next scheduled routines — hardcoded schedule until real cron wired in
-        _scheduled = [
-            ("17:00", "evening digest"),
-            ("22:00", "vault compact"),
-            ("09:00", "morning brief"),
-        ]
+        # Scheduled routines: read from calendar-today.json, fall back to defaults
+        _cal_events = read_calendar_events()
+        if _cal_events:
+            _scheduled = [(e["time"][:5], e["label"]) for e in _cal_events if e.get("time")]
+        else:
+            _scheduled = [
+                ("17:00", "evening digest"),
+                ("22:00", "vault compact"),
+                ("09:00", "morning brief"),
+            ]
         _now_dt = datetime.now()
         _sched_rows = []
         for hhmm, label in _scheduled:
@@ -4737,7 +5523,7 @@ with overview_tab:
             pulse_html = '<div class="cpt-pulse-card"><div class="cpt-cat">vault pulse</div>'
             for it in pulse_items:
                 try:
-                    uri = obsidian_uri(it["path"])
+                    uri = run_view_uri(it["path"]) if Path(it["path"]).suffix == ".md" else "#"
                 except Exception:
                     uri = "#"
                 pulse_html += (
@@ -4756,6 +5542,63 @@ with overview_tab:
             pulse_html += '</div>'
             st.markdown(pulse_html, unsafe_allow_html=True)
 
+        # ——— Monday Inbox ———
+        _PRIORITY_DOT_CLR = {
+            "Urgent": "var(--danger)",
+            "High":   "var(--warn)",
+            "Medium": "var(--accent)",
+            "Low":    "var(--good)",
+        }
+        _STATUS_BADGE = {
+            "In progress":  ("in progress",  "var(--warn)"),
+            "Needs Review": ("needs review", "var(--accent)"),
+            "Done":         ("done",          "var(--good)"),
+        }
+        inbox_items = read_monday_inbox(limit=20)
+        if inbox_items or _read_env("MONDAY_API_KEY"):
+            # surface non-Done items first, then Done, cap at 8 visible
+            non_done = [i for i in inbox_items if i["status"] != "Done"]
+            done     = [i for i in inbox_items if i["status"] == "Done"]
+            visible  = (non_done + done)[:8]
+            total    = len(inbox_items)
+            inbox_html = (
+                '<div class="cpt-pulse-card">'
+                '<div class="cpt-cat">monday · team inbox</div>'
+            )
+            if not inbox_items:
+                inbox_html += (
+                    '<div style="color:var(--fg-mute);font-size:11px;padding:0.4rem 0">'
+                    'no items</div>'
+                )
+            for it in visible:
+                dot_color = _PRIORITY_DOT_CLR.get(it["priority"], "var(--fg-mute)")
+                badge_label, badge_color = _STATUS_BADGE.get(it["status"], ("", ""))
+                badge_html = ""
+                if badge_label:
+                    badge_html = (
+                        f'<span class="mon-inbox-badge" style="color:{badge_color};'
+                        f'box-shadow:0 0 0 1px {badge_color}33">{badge_label}</span>'
+                    )
+                inbox_html += (
+                    '<div class="mon-inbox-row">'
+                    f'<span class="mon-dot" style="background:{dot_color}"></span>'
+                    f'<span class="mon-inbox-name">'
+                    f'<a href="{html_escape(it["url"])}" target="_blank" '
+                    f'style="color:inherit;text-decoration:none;">'
+                    f'{html_escape(it["name"])}</a></span>'
+                    f'{badge_html}'
+                    '</div>'
+                )
+            if total > 8:
+                board_url = "https://bethelightdecor.monday.com/boards/18413165283"
+                inbox_html += (
+                    f'<div class="mon-inbox-footer">'
+                    f'<a href="{board_url}" target="_blank" '
+                    f'style="color:var(--fg-mute);text-decoration:none;">'
+                    f'+{total - 8} more · view all →</a></div>'
+                )
+            inbox_html += '</div>'
+            st.markdown(inbox_html, unsafe_allow_html=True)
 
 
     # ——— MAIN COLUMN ———
@@ -4781,10 +5624,10 @@ with overview_tab:
                 saved_link = ""
                 if st.session_state.last_saved_path:
                     saved = Path(st.session_state.last_saved_path)
-                    uri = obsidian_uri(saved)
+                    uri = run_view_uri(saved)
                     rel = saved.relative_to(VAULT_PATH).as_posix()
                     saved_link = (
-                        f'<a class="obsidian-link" href="{uri}" target="_blank">◆ open in obsidian · {rel}</a>'
+                        f'<a class="obsidian-link" href="{uri}" target="_blank">◆ open result · {rel}</a>'
                     )
 
                 meta_html = ""
@@ -5120,21 +5963,248 @@ with overview_tab:
             st.rerun()
 
 
-# ── v2 social tab — Facebook + Instagram audience cards ──
+# ── v2 social tab — post scheduler + audience + recent posts ──
 with social_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 
-        # Latest Upload + audience row (per-tab copy)
-        if _enabled_cards.get("latest_upload", True):
-            _latest_aud = read_latest_video()
-            _latest_aud_html = render_latest_upload(_latest_aud)
-            if _latest_aud_html:
-                st.markdown(_latest_aud_html, unsafe_allow_html=True)
-
+        # ── Audience row ──────────────────────────────────────────────
         if _enabled_cards.get("audience_row", True):
             render_audience_row()
-            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+
+        # ── Post Scheduler ────────────────────────────────────────────
+        st.markdown(
+            '<div class="cpt-cat" style="margin-bottom:0.6rem">post scheduler</div>',
+            unsafe_allow_html=True,
+        )
+        _sched_col, _queue_col = st.columns([3, 2], gap="large")
+
+        with _sched_col:
+            _has_post_perm = True
+            if not _has_post_perm:
+                st.markdown(
+                    '<div class="sched-perm-warn">'
+                    '⚠ <strong>Needs upgrade:</strong> your Facebook token is read-only. '
+                    'To enable scheduling, generate a new token at '
+                    '<a href="https://developers.facebook.com/tools/explorer/" target="_blank" '
+                    'style="color:var(--warn)">developers.facebook.com/tools/explorer</a> '
+                    'with <code>pages_manage_posts</code> permission, then update '
+                    '<code>FB_PAGE_ACCESS_TOKEN</code> in <code>~/.claude/.env</code>.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            with st.form("fb_post_scheduler", clear_on_submit=True):
+                _platforms = st.multiselect(
+                    "Platform",
+                    ["Facebook"],
+                    default=["Facebook"],
+                    help="Instagram support coming soon",
+                )
+                _post_msg = st.text_area(
+                    "Caption",
+                    placeholder="Write your post caption here…",
+                    height=110,
+                )
+                _post_media = st.file_uploader(
+                    "Photo or Video (optional)",
+                    type=["jpg", "jpeg", "png", "gif", "mp4", "mov"],
+                    help="Images: JPG, PNG, GIF up to 10 MB · Videos: MP4, MOV up to 100 MB",
+                )
+                _post_link = st.text_input(
+                    "Link (optional — skip if uploading media)",
+                    placeholder="https://bethelightdecor.com/…",
+                )
+                _pc1, _pc2 = st.columns(2)
+                with _pc1:
+                    _post_date = st.date_input("Date", value=date.today())
+                with _pc2:
+                    _post_time = st.time_input(
+                        "Time",
+                        value=datetime.now().replace(minute=0, second=0, microsecond=0).time(),
+                    )
+                _post_now = st.checkbox("Post immediately (ignore date/time above)")
+
+                _submitted = st.form_submit_button(
+                    "Schedule Post →" if not _post_now else "Publish Now →",
+                    disabled=not _has_post_perm,
+                    use_container_width=True,
+                )
+                if _submitted:
+                    if not _post_msg.strip():
+                        st.error("Caption is required.")
+                    else:
+                        _unix_ts: int | None = None
+                        if not _post_now:
+                            _sdt = datetime.combine(_post_date, _post_time)
+                            _unix_ts = int(_sdt.timestamp())
+                            if _unix_ts < int(time.time()) + 600:
+                                st.error("Scheduled time must be at least 10 minutes from now.")
+                                _unix_ts = None
+                        if _unix_ts is not None or _post_now:
+                            _fbytes = _post_media.getvalue() if _post_media else None
+                            _fname  = _post_media.name if _post_media else ""
+                            _mb = len(_fbytes) / 1_048_576 if _fbytes else 0
+                            if _fbytes and _mb > 100:
+                                st.error(f"File too large ({_mb:.0f} MB). Max 100 MB.")
+                            else:
+                                with st.spinner("Uploading…" if _fbytes else "Posting…"):
+                                    _result = publish_facebook_post(
+                                        _post_msg, _unix_ts, _post_link, _fbytes, _fname
+                                    )
+                                if _result["ok"]:
+                                    _action = "published" if _post_now else "scheduled"
+                                    st.success(f"Post {_action}! ID: {_result['post_id']}")
+                                    st.cache_data.clear()
+                                else:
+                                    st.error(f"Failed: {_result['error']}")
+
+        with _queue_col:
+            st.markdown(
+                '<div class="sched-panel-head">scheduled queue</div>',
+                unsafe_allow_html=True,
+            )
+            # ── month navigation ──────────────────────────────────────────
+            if "sched_cal_month" not in st.session_state:
+                st.session_state.sched_cal_month = date.today().replace(day=1)
+            _cal_month: date = st.session_state.sched_cal_month
+
+            _cnav1, _cnav2, _cnav3 = st.columns([1, 5, 1])
+            with _cnav1:
+                if st.button("‹", key="cal_prev_m", help="Previous month"):
+                    _cm = st.session_state.sched_cal_month
+                    _new_m = 12 if _cm.month == 1 else _cm.month - 1
+                    _new_y = _cm.year - 1 if _cm.month == 1 else _cm.year
+                    st.session_state.sched_cal_month = _cm.replace(year=_new_y, month=_new_m)
+                    st.rerun()
+            with _cnav2:
+                st.markdown(
+                    f'<div style="text-align:center;font-size:0.58rem;letter-spacing:0.12em;'
+                    f'text-transform:uppercase;color:var(--fg-dim);padding-top:0.3rem;'
+                    f'font-family:\'JetBrains Mono\',monospace">'
+                    f'{_cal_month.strftime("%B %Y")}</div>',
+                    unsafe_allow_html=True,
+                )
+            with _cnav3:
+                if st.button("›", key="cal_next_m", help="Next month"):
+                    _cm = st.session_state.sched_cal_month
+                    _new_m = 1 if _cm.month == 12 else _cm.month + 1
+                    _new_y = _cm.year + 1 if _cm.month == 12 else _cm.year
+                    st.session_state.sched_cal_month = _cm.replace(year=_new_y, month=_new_m)
+                    st.rerun()
+
+            # ── build calendar ────────────────────────────────────────────
+            _sched_posts = read_facebook_scheduled()
+            _today_d = date.today()
+            _sched_by_date: dict = {}
+            for _sp in _sched_posts:
+                _sp_dt = _parse_iso(_sp["sched_ts"])
+                if _sp_dt:
+                    _sp_d = _sp_dt.date()
+                    _sched_by_date.setdefault(_sp_d, []).append(_sp)
+
+            _cal_obj = _cal_mod.Calendar(firstweekday=6)  # Sun start
+            _month_weeks = _cal_obj.monthdatescalendar(_cal_month.year, _cal_month.month)
+
+            _cal_html = '<div class="sched-cal-wrap"><div class="sched-cal-grid">'
+            for _dow in ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]:
+                _cal_html += f'<div class="sched-cal-dow">{_dow}</div>'
+
+            for _week in _month_weeks:
+                for _day in _week:
+                    _cls = ["sched-cal-cell"]
+                    if _day.month != _cal_month.month:
+                        _cls.append("dim")
+                    if _day == _today_d:
+                        _cls.append("today")
+                    _day_posts = _sched_by_date.get(_day, [])
+                    if _day_posts:
+                        _cls.append("has-post")
+                    _dot = '<div class="sched-cal-dot"></div>' if _day_posts else ""
+                    _cal_html += (
+                        f'<div class="{" ".join(_cls)}">'
+                        f'{_day.day}{_dot}</div>'
+                    )
+            _cal_html += "</div>"  # close grid
+
+            # posts list for this month
+            _month_posts = sorted(
+                [(d, p) for d, ps in _sched_by_date.items()
+                 for p in ps
+                 if d.month == _cal_month.month and d.year == _cal_month.year],
+                key=lambda x: x[0],
+            )
+            if _month_posts:
+                for _mp_date, _mp in _month_posts:
+                    _mp_dt = _parse_iso(_mp["sched_ts"])
+                    _mp_time = _mp_dt.strftime("%I:%M %p").lstrip("0") if _mp_dt else ""
+                    _mp_label = html_escape(
+                        f'{_mp_date.strftime("%b")} {_mp_date.day} · {_mp_time}'
+                    )
+                    _mp_msg = html_escape((_mp["message"] or "(no caption)")[:100])
+                    _mp_url = html_escape(_mp.get("url", "#"))
+                    _cal_html += (
+                        '<div class="sched-cal-post">'
+                        f'<div class="sched-cal-post-date">{_mp_label}</div>'
+                        f'<a href="{_mp_url}" target="_blank" style="text-decoration:none">'
+                        f'<div class="sched-cal-post-msg">{_mp_msg}</div></a>'
+                        '</div>'
+                    )
+            else:
+                _cal_html += (
+                    '<div class="sched-queue-empty" style="padding-top:0.5rem">'
+                    'no posts this month</div>'
+                )
+            _cal_html += "</div>"  # close wrap
+            st.markdown(_cal_html, unsafe_allow_html=True)
+
+        st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
+
+        # ── Facebook recent posts grid ────────────────────────────────
+        st.markdown(
+            '<div class="cpt-cat" style="margin-bottom:0.3rem">facebook · recent posts</div>',
+            unsafe_allow_html=True,
+        )
+        _fb_posts = read_facebook_posts(limit=9)
+        if _fb_posts:
+            _posts_html = '<div class="fb-posts-grid">'
+            for _p in _fb_posts:
+                _msg  = html_escape(_p["message"] or "(no caption)")
+                _url  = html_escape(_p["url"])
+                _ago  = ""
+                _pdt  = _parse_iso(_p["created"])
+                if _pdt:
+                    try:
+                        _age_s = int((datetime.now(_pdt.tzinfo) - _pdt).total_seconds())
+                        _ago = fmt_ago(max(0, _age_s)) + " ago"
+                    except Exception:
+                        pass
+                _img_html = (
+                    f'<img class="fb-post-img" src="{html_escape(_p["image"])}" alt="" loading="lazy" />'
+                    if _p["image"] else
+                    '<div class="fb-post-img" style="display:flex;align-items:center;'
+                    'justify-content:center;color:var(--fg-mute);font-size:1.6rem;'
+                    'background:var(--bg-elev)">f</div>'
+                )
+                _posts_html += (
+                    f'<a class="fb-post-card" href="{_url}" target="_blank">'
+                    f'{_img_html}'
+                    '<div class="fb-post-body">'
+                    f'<div class="fb-post-msg">{_msg}</div>'
+                    '<div class="fb-post-meta">'
+                    f'<span class="fb-post-stat">♥ {_p["likes"]:,}</span>'
+                    f'<span class="fb-post-stat">💬 {_p["comments"]:,}</span>'
+                    f'<span>{_ago}</span>'
+                    '</div></div></a>'
+                )
+            _posts_html += '</div>'
+            st.markdown(_posts_html, unsafe_allow_html=True)
+        elif _read_env("FB_PAGE_ACCESS_TOKEN"):
+            st.caption("No posts returned — check pages_read_engagement permission on token.")
+        else:
+            st.caption("Add FB_PAGE_ACCESS_TOKEN to ~/.claude/.env to see live posts.")
+
+        st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
         # YtWeekReview marquee
         if _enabled_cards.get("yt_week_review", True):
@@ -5161,31 +6231,46 @@ with jobber_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
         st.markdown("#### Jobber Schedule", unsafe_allow_html=False)
-        _job_cols = st.columns(3, gap="small")
-        _job_demo = [
-            ("Jobs Today", getattr(_cfg, "DEMO_AUDIENCE", {}).get("jobs_today", {}).get("value", 3), "on the schedule today"),
-            ("Jobs This Week", 9, "confirmed installs + service"),
-            ("Crew Utilization", "87%", "of available crew hours booked"),
+        _job_cols = st.columns(4, gap="small")
+        _job_csv = _read_csv_latest([
+            ("jobber", "jobs_today"), ("jobber", "jobs_week"),
+            ("jobber", "jobs_scheduled"), ("jobber", "jobs_late"),
+        ])
+        _job_live = [
+            ("Jobs Today",     int(_job_csv.get(("jobber", "jobs_today"), 0)),      "on the schedule today"),
+            ("Jobs This Week", int(_job_csv.get(("jobber", "jobs_week"), 0)),       "confirmed this week"),
+            ("Total Scheduled",int(_job_csv.get(("jobber", "jobs_scheduled"), 0)),  "all upcoming jobs"),
+            ("Jobs Late",      int(_job_csv.get(("jobber", "jobs_late"), 0)),       "past scheduled date"),
         ]
-        for _i, (_title, _val, _desc) in enumerate(_job_demo):
+        for _i, (_title, _val, _desc) in enumerate(_job_live):
             with _job_cols[_i]:
                 st.metric(_title, _val, help=_desc)
-        st.markdown("---")
-        st.caption("🟡 Demo mode — connect Jobber to see live job data")
+        if _job_csv:
+            st.caption("Live data from Jobber via metrics.csv")
+        else:
+            st.markdown("---")
+            st.caption("No Jobber data in metrics.csv yet — run a metrics pull first")
 
 with qbo_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
         st.markdown("#### QuickBooks Overview", unsafe_allow_html=False)
         _qbo_cols = st.columns(4, gap="small")
-        _qbo_demo = [
-            ("Revenue MTD", f"${getattr(_cfg, 'DEMO_AUDIENCE', {}).get('revenue_mtd', {}).get('value', 24800):,}", "month-to-date revenue"),
-            ("Open Invoices", getattr(_cfg, "DEMO_AUDIENCE", {}).get("open_invoices", {}).get("value", 7), "awaiting payment"),
-            ("Net Profit MTD", "$8,240", "after expenses"),
-            ("AR Balance", "$14,600", "total outstanding"),
+        _qbo_csv = _read_csv_latest([
+            ("qbo", "revenue_mtd"), ("qbo", "revenue_ytd"),
+            ("qbo", "ar_balance"),  ("qbo", "outstanding_count"),
+        ])
+        _qbo_live = [
+            ("Revenue MTD",   f"${_qbo_csv.get(('qbo','revenue_mtd'), 0):,.0f}",      "month-to-date revenue"),
+            ("Revenue YTD",   f"${_qbo_csv.get(('qbo','revenue_ytd'), 0):,.0f}",      "year-to-date revenue"),
+            ("AR Balance",    f"${_qbo_csv.get(('qbo','ar_balance'), 0):,.0f}",       "total outstanding"),
+            ("Open Invoices", int(_qbo_csv.get(("qbo", "outstanding_count"), 0)),     "invoices awaiting payment"),
         ]
-        for _i, (_title, _val, _desc) in enumerate(_qbo_demo):
+        for _i, (_title, _val, _desc) in enumerate(_qbo_live):
             with _qbo_cols[_i]:
                 st.metric(_title, _val, help=_desc)
-        st.markdown("---")
-        st.caption("🟡 Demo mode — connect QuickBooks to see live financial data")
+        if _qbo_csv:
+            st.caption("Live data from QuickBooks via metrics.csv")
+        else:
+            st.markdown("---")
+            st.caption("No QBO data in metrics.csv yet — run a metrics pull first")
