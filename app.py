@@ -3367,6 +3367,10 @@ def _parse_event(evt: dict):
         RT["tokens_out"] = usage.get("output_tokens")
         if evt.get("subtype") != "success":
             RT["error"] = evt.get("result") or evt.get("subtype")
+        else:
+            result_text = evt.get("result", "")
+            if result_text and not RT["text"].strip():
+                RT["text"] = result_text
     elif t == "system":
         sub = evt.get("subtype")
         if sub == "init":
