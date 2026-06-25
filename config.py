@@ -7,23 +7,26 @@ Streamlit Community Cloud (Linux) and locally on Windows.
 """
 
 import os
+import shutil
 from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 # Local Windows path when running on the office machine.
-# Falls back to a temp dir on Streamlit Cloud (DEMO_MODE covers it).
+# Falls back to demo-vault on Railway/cloud.
 _local_vault = Path(r"C:\Users\labor\the-vault")
-VAULT_PATH = _local_vault if _local_vault.exists() else Path("demo-vault")
+_project_root = Path(__file__).parent
+VAULT_PATH = _local_vault if _local_vault.exists() else _project_root / "demo-vault"
 VAULT_NAME = "BTL Cockpit"
 
-# Skill runner — only works when the local runner is active.
-# On Streamlit Cloud this path won't exist; buttons show a friendly error.
+# Skill runner — local enqueue bridge on Windows, system claude on Railway.
 _local_cli_bat = Path(r"C:\Users\labor\projects\my-cockpit\runner\enqueue.bat")
 _local_cli_py  = Path(r"C:\Users\labor\projects\my-cockpit\runner\enqueue.py")
+_system_claude = shutil.which("claude")  # installed via npm on Railway
 CLAUDE_CLI = (
     _local_cli_bat if _local_cli_bat.exists() else
     _local_cli_py  if _local_cli_py.exists()  else
+    Path(_system_claude) if _system_claude else
     Path("/usr/bin/true")
 )
 
