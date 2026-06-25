@@ -3382,8 +3382,65 @@ def _parse_event(evt: dict):
         save_rate_limit(evt)
 
 
+def _load_skill_system_prompt(prompt: str) -> str | None:
+    """Extract skill name from prompt and load its system prompt from SKILL.md."""
+    import re
+    m = re.search(r"/([a-z][a-z0-9-]+)", prompt)
+    if not m:
+        return None
+    skill_name = m.group(1)
+    skill_md = VAULT_PATH / ".claude" / "skills" / skill_name / "SKILL.md"
+    if not skill_md.exists():
+        return None
+    text = skill_md.read_text(encoding="utf-8")
+    # Extract the ## System Prompt section
+    sp_match = re.search(r"## System Prompt\s*\n(.*)", text, re.DOTALL)
+    if sp_match:
+        return sp_match.group(1).strip()
+    return text.strip()
+
+
+def _run_skill_bg_api(prompt: str):
+    """Direct Anthropic SDK runner — used when Claude CLI is unavailable (Railway/cloud)."""
+    try:
+        import anthropic
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            RT["error"] = "ANTHROPIC_API_KEY not set"
+            return
+
+        system_prompt = _load_skill_system_prompt(prompt)
+        if not system_prompt:
+            system_prompt = "You are a helpful business assistant for Be The Light Decor."
+
+        client = anthropic.Anthropic(api_key=api_key)
+        with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=8096,
+            system=system_prompt,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            for text_chunk in stream.text_stream:
+                RT["text"] += text_chunk
+            final = stream.get_final_message()
+            usage = final.usage
+            RT["tokens_in"] = usage.input_tokens
+            RT["tokens_out"] = usage.output_tokens
+    except Exception as e:
+        RT["error"] = str(e)
+    finally:
+        RT["done"] = True
+        RT["proc"] = None
+
+
+_CLAUDE_CLI_USABLE = CLAUDE_CLI.exists() and CLAUDE_CLI.name not in ("true",)
+
+
 def _run_skill_bg(prompt: str):
     """Subprocess runner (runs in background thread). Populates RT."""
+    if not _CLAUDE_CLI_USABLE:
+        _run_skill_bg_api(prompt)
+        return
     try:
         proc = subprocess.Popen(
             [
