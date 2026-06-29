@@ -3603,8 +3603,30 @@ if _action_q == "terminal":
     st.query_params.clear()
 elif _action_q == "pull-latest":
     try:
-        uid, _ = write_queue_intent("metrics-pull")
-        st.toast(f"queued metrics-pull · {uid[:8]}", icon="✅")
+        if _CLAUDE_CLI_USABLE:
+            uid, _ = write_queue_intent("metrics-pull")
+            st.toast(f"queued metrics-pull · {uid[:8]}", icon="✅")
+        else:
+            # Railway/cloud: run pull scripts directly
+            import subprocess as _sp, sys as _sys
+            _scripts_dir = Path(__file__).parent / "scripts"
+            _pull_scripts = [
+                "pull_ghl.py", "pull_jobber.py",
+                "pull_qbo.py", "pull_facebook.py",
+            ]
+            _errors = []
+            for _s in _pull_scripts:
+                _r = _sp.run(
+                    [_sys.executable, str(_scripts_dir / _s)],
+                    capture_output=True, text=True, timeout=30,
+                    env={**os.environ, "AGENTIC_OS_VAULT": str(VAULT_PATH)},
+                )
+                if _r.returncode != 0:
+                    _errors.append(f"{_s}: {_r.stderr[:120]}")
+            if _errors:
+                st.toast(f"Some pulls failed: {'; '.join(_errors[:2])}", icon="⚠️")
+            else:
+                st.toast("Metrics pulled successfully ✅", icon="✅")
     except Exception as e:
         st.toast(f"pull failed: {e}", icon="⚠️")
     st.query_params.clear()
@@ -6330,16 +6352,30 @@ with ghl_tab:
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
         st.markdown("#### GHL Pipeline", unsafe_allow_html=False)
         _ghl_cols = st.columns(3, gap="small")
-        _ghl_demo = [
-            ("Active Leads", getattr(_cfg, "DEMO_AUDIENCE", {}).get("active_leads", {}).get("value", 18), "contacts in pipeline"),
-            ("New Leads 7d", 5, "new inquiries this week"),
-            ("Pipeline Value", "$42,500", "estimated open opportunity"),
-        ]
-        for _i, (_title, _val, _desc) in enumerate(_ghl_demo):
-            with _ghl_cols[_i]:
-                st.metric(_title, _val, help=_desc)
-        st.markdown("---")
-        st.caption("🟡 Demo mode — connect GHL to see live pipeline data")
+        _ghl_csv = _read_csv_latest([
+            ("ghl", "active_leads"), ("ghl", "new_leads_7d"), ("ghl", "pipeline_value"),
+        ])
+        if _ghl_csv:
+            _ghl_live = [
+                ("Active Leads",    int(_ghl_csv.get(("ghl","active_leads"), 0)),          "contacts in pipeline"),
+                ("New Leads 7d",    int(_ghl_csv.get(("ghl","new_leads_7d"), 0)),          "new inquiries this week"),
+                ("Pipeline Value",  f"${_ghl_csv.get(('ghl','pipeline_value'), 0):,.0f}", "estimated open opportunity"),
+            ]
+            for _i, (_title, _val, _desc) in enumerate(_ghl_live):
+                with _ghl_cols[_i]:
+                    st.metric(_title, _val, help=_desc)
+            st.caption("Live data from GoHighLevel via metrics.csv")
+        else:
+            _ghl_fallback = [
+                ("Active Leads", getattr(_cfg, "DEMO_AUDIENCE", {}).get("active_leads", {}).get("value", 18), "contacts in pipeline"),
+                ("New Leads 7d", 5, "new inquiries this week"),
+                ("Pipeline Value", "$42,500", "estimated open opportunity"),
+            ]
+            for _i, (_title, _val, _desc) in enumerate(_ghl_fallback):
+                with _ghl_cols[_i]:
+                    st.metric(_title, _val, help=_desc)
+            st.markdown("---")
+            st.caption("🟡 No GHL data yet — click ↻ Pull to load live data")
 
 with jobber_tab:
     if _layout_v == "v2":
