@@ -14,9 +14,19 @@ import calendar as _cal_mod
 from itertools import groupby
 
 import os
-import yaml
 import streamlit as st
-import streamlit_authenticator as stauth
+
+# ── Load ~/.claude/.env into os.environ at startup ────────────────────────────
+_dot_env_path = Path.home() / ".claude" / ".env"
+if _dot_env_path.exists():
+    for _raw_line in _dot_env_path.read_text(encoding="utf-8").splitlines():
+        _line = _raw_line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            _k = _k.strip()
+            _v = _v.strip().strip('"').strip("'")
+            if _k and _k not in os.environ:  # don't overwrite Railway env vars
+                os.environ[_k] = _v
 import altair as alt
 import pandas as pd
 
@@ -39,68 +49,18 @@ import config as _cfg  # for getattr lookups (DEMO_MODE, ENABLED_CARDS, DEMO_*)
 
 st.set_page_config(page_title="BTL Cockpit", page_icon="◆", layout="wide")
 
-# ═══════════════════════════════════════════════════════════
-# AUTHENTICATION
-# ═══════════════════════════════════════════════════════════
 
-def _load_auth_config() -> dict:
-    """Load user credentials from auth_config.yaml or BTL_AUTH_CONFIG env var."""
-    env_yaml = os.environ.get("BTL_AUTH_CONFIG", "")
-    if env_yaml:
-        return yaml.safe_load(env_yaml)
-    cfg_path = Path(__file__).parent / "auth_config.yaml"
-    if cfg_path.exists():
-        return yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
-    return {
-        "credentials": {"usernames": {}},
-        "cookie": {"expiry_days": 30, "key": "btl_default_key", "name": "btl_auth"},
-    }
+@st.cache_resource
+def _start_cloud_scheduler():
+    """Cloud deployments (Railway) have no local runner to refresh metrics.csv —
+    start one in-process. No-op on the office PC, which has its own runner."""
+    from cloud_scheduler import start_cloud_scheduler
+    start_cloud_scheduler(VAULT_PATH, local_vault_marker=Path(r"C:\Users\labor\the-vault"))
+    return True
 
-_auth_cfg = _load_auth_config()
-_authenticator = stauth.Authenticate(
-    _auth_cfg["credentials"],
-    _auth_cfg["cookie"]["name"],
-    _auth_cfg["cookie"]["key"],
-    _auth_cfg["cookie"]["expiry_days"],
-)
 
-def _render_login_page():
-    st.markdown("""
-    <style>
-    [data-testid="stAppViewContainer"] { background: #0d0d12; }
-    [data-testid="stHeader"] { display: none; }
-    .login-wrap { max-width: 380px; margin: 8vh auto 0; }
-    .login-logo { font-size: 1.1rem; letter-spacing: 0.22em; text-transform: uppercase;
-        color: #eebc0b; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.2rem; }
-    .login-sub  { font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase;
-        color: #555; font-family: 'JetBrains Mono', monospace; margin-bottom: 2rem; }
-    </style>
-    <div class="login-wrap">
-      <div class="login-logo">◆ BTL Cockpit</div>
-      <div class="login-sub">Be The Light Decor · Team Portal</div>
-    </div>
-    """, unsafe_allow_html=True)
+_start_cloud_scheduler()
 
-_render_login_page()
-_authenticator.login(location="main")
-
-if st.session_state.get("authentication_status") is False:
-    st.error("Username or password is incorrect.")
-    st.stop()
-elif not st.session_state.get("authentication_status"):
-    st.stop()
-
-# ── Authenticated — show logout in sidebar ───────────────
-with st.sidebar:
-    _auth_name = st.session_state.get("name", "Team")
-    st.markdown(
-        f'<div style="font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;'
-        f'color:#555;padding:0.6rem 0 0.2rem">signed in as</div>'
-        f'<div style="font-size:0.75rem;color:#eebc0b;margin-bottom:0.8rem">{_auth_name}</div>',
-        unsafe_allow_html=True,
-    )
-    _authenticator.logout(button_name="Sign Out", location="sidebar")
-    st.markdown("---")
 
 # ═══════════════════════════════════════════════════════════
 # GLOBAL RUNTIME (shared across reruns, lives in module scope)
@@ -3382,6 +3342,125 @@ def _parse_event(evt: dict):
         save_rate_limit(evt)
 
 
+def _dotenv_get(name: str) -> str:
+    """Read env var — os.environ first, then ~/.claude/.env fallback."""
+    if val := os.environ.get(name):
+        return val
+    dot_env = Path.home() / ".claude" / ".env"
+    if dot_env.exists():
+        for raw in dot_env.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                if k.strip() == name:
+                    return v.strip().strip('"').strip("'")
+    return ""
+
+
+def _fetch_ghl_inbox() -> str:
+    """Fetch recent GHL contacts to use as inbox data for the digest."""
+    import urllib.request
+    import urllib.error
+
+    api_key = _dotenv_get("GHL_API_KEY")
+    location_id = _dotenv_get("GHL_LOCATION_ID")
+    if not api_key or not location_id:
+        return ""
+    try:
+        url = (
+            f"https://services.leadconnectorhq.com/contacts/"
+            f"?locationId={location_id}&limit=25&sortBy=date_added&sortDirection=desc"
+        )
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Version": "2021-07-28",
+                "Accept": "application/json",
+                "User-Agent": "BTLCockpit/1.0",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read().decode())
+        contacts = data.get("contacts", [])
+        if not contacts:
+            return "GHL: No recent contacts found.\n"
+        lines = [f"=== GHL RECENT CONTACTS ({len(contacts)} contacts, newest first) ==="]
+        for c in contacts:
+            name = f"{c.get('firstName','') or ''} {c.get('lastName','') or ''}".strip() or "Unknown"
+            phone = c.get("phone", "") or ""
+            email = c.get("email", "") or ""
+            tags = ", ".join(c.get("tags", []) or [])
+            date = (c.get("dateAdded", "") or "")[:10]
+            source = c.get("source", "") or "direct"
+            contact_str = f"- [{source}] {name}"
+            if email:
+                contact_str += f" | {email}"
+            if phone:
+                contact_str += f" | {phone}"
+            contact_str += f" | Added: {date}"
+            if tags:
+                contact_str += f" | Tags: {tags}"
+            lines.append(contact_str)
+        return "\n".join(lines) + "\n"
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return "NOTE: GHL unavailable (API key needs to be regenerated in GHL Settings → Integrations → API). Showing other sources only.\n"
+        return f"GHL contacts fetch error: HTTP {e.code}\n"
+    except Exception as e:
+        return f"GHL contacts fetch error: {str(e)[:120]}\n"
+
+
+def _fetch_gmail_unread() -> str:
+    """Fetch unread Gmail inbox messages via IMAP (no Gmail API needed)."""
+    import imaplib
+    import email
+    from email.header import decode_header
+
+    gmail_address = _dotenv_get("GMAIL_ADDRESS")
+    app_password = _dotenv_get("GMAIL_APP_PASSWORD")
+    if not gmail_address or not app_password:
+        return ""
+
+    def _decode_header_val(val: str) -> str:
+        parts = decode_header(val or "")
+        result = []
+        for byt, enc in parts:
+            if isinstance(byt, bytes):
+                result.append(byt.decode(enc or "utf-8", errors="replace"))
+            else:
+                result.append(byt)
+        return "".join(result)
+
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        mail.login(gmail_address, app_password)
+        mail.select("INBOX")
+        _, data = mail.search(None, "UNSEEN")
+        ids = (data[0].split() if data[0] else [])
+        # Most recent first, cap at 15
+        ids = ids[::-1][:15]
+        if not ids:
+            mail.logout()
+            return "Gmail: No unread messages in inbox.\n"
+        lines = [f"=== GMAIL UNREAD ({len(ids)} messages) ==="]
+        for uid in ids:
+            _, msg_data = mail.fetch(uid, "(RFC822.HEADER)")
+            raw = msg_data[0][1] if msg_data and msg_data[0] else b""
+            msg = email.message_from_bytes(raw)
+            sender = _decode_header_val(msg.get("From", "Unknown"))
+            subject = _decode_header_val(msg.get("Subject", "(no subject)"))
+            date = msg.get("Date", "")[:25]
+            lines.append(f"- [Gmail] From: {sender}")
+            lines.append(f"  Subject: {subject} | {date}")
+        mail.logout()
+        return "\n".join(lines) + "\n"
+    except imaplib.IMAP4.error as e:
+        return f"Gmail IMAP error: {str(e)[:120]}\n"
+    except Exception as e:
+        return f"Gmail fetch error: {str(e)[:120]}\n"
+
+
 def _load_skill_system_prompt(prompt: str) -> str | None:
     """Extract skill name from prompt and load its system prompt from SKILL.md."""
     import re
@@ -3389,8 +3468,13 @@ def _load_skill_system_prompt(prompt: str) -> str | None:
     if not m:
         return None
     skill_name = m.group(1)
-    skill_md = VAULT_PATH / ".claude" / "skills" / skill_name / "SKILL.md"
-    if not skill_md.exists():
+    # Check VAULT_PATH first, then ~/.claude/skills/ as fallback
+    candidates = [
+        VAULT_PATH / ".claude" / "skills" / skill_name / "SKILL.md",
+        Path.home() / ".claude" / "skills" / skill_name / "SKILL.md",
+    ]
+    skill_md = next((p for p in candidates if p.exists()), None)
+    if not skill_md:
         return None
     text = skill_md.read_text(encoding="utf-8")
     # Extract the ## System Prompt section
@@ -3401,10 +3485,21 @@ def _load_skill_system_prompt(prompt: str) -> str | None:
 
 
 def _run_skill_bg_api(prompt: str):
-    """Direct Anthropic SDK runner — used when Claude CLI is unavailable (Railway/cloud)."""
+    """Direct Anthropic SDK runner — used when Claude CLI is unavailable (Railway/cloud).
+    Prompt is already enriched with live data by _run_skill_bg before this is called."""
     try:
+        # Inbox digest shortcut: if no real message data was fetched, skip the API call
+        # and return a deterministic "clear" response. Avoids model guessing.
+        if "inbox-monitor-digest" in prompt and "=== LIVE INBOX DATA" not in prompt:
+            RT["text"] = (
+                "✅ Inbox clear — no new messages to triage as of today.\n\n"
+                "*(GHL API key needs renewal — go to GHL Settings → Integrations → API Keys. "
+                "Gmail IMAP not configured or unavailable.)*"
+            )
+            return
+
         import anthropic
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        api_key = os.environ.get("ANTHROPIC_API_KEY") or _dotenv_get("ANTHROPIC_API_KEY")
         if not api_key:
             RT["error"] = "ANTHROPIC_API_KEY not set"
             return
@@ -3438,15 +3533,36 @@ _CLAUDE_CLI_USABLE = CLAUDE_CLI.exists() and CLAUDE_CLI.name not in ("true",)
 
 def _run_skill_bg(prompt: str):
     """Subprocess runner (runs in background thread). Populates RT."""
-    if not _CLAUDE_CLI_USABLE:
-        _run_skill_bg_api(prompt)
+    # Pre-fetch live inbox data for data-dependent skills
+    enriched_prompt = prompt
+    if "inbox-monitor-digest" in prompt:
+        ghl_data = _fetch_ghl_inbox()
+        gmail_data = _fetch_gmail_unread()
+        # Real data starts with "===" (header lines). Error/status strings don't.
+        real_parts = [d for d in [ghl_data, gmail_data] if d and d.strip().startswith("===")]
+        status_parts = [d for d in [ghl_data, gmail_data] if d and not d.strip().startswith("===")]
+        sections = []
+        if real_parts:
+            sections.append("=== LIVE INBOX DATA (fetched just now) ===\n" + "".join(real_parts))
+        if status_parts:
+            note = "".join(status_parts).strip()
+            sections.append(f"=== FETCH STATUS ===\n{note}")
+        if not sections:
+            sections.append("=== FETCH STATUS ===\nNo inbox sources returned data.")
+        fetch_context = "\n\n".join(sections).strip()
+        enriched_prompt = f"{prompt}\n\n{fetch_context}"
+
+    # inbox-monitor-digest: always use direct API — data is already pre-fetched above,
+    # and passing a long enriched prompt via enqueue.bat %* breaks on special chars.
+    if not _CLAUDE_CLI_USABLE or "inbox-monitor-digest" in prompt:
+        _run_skill_bg_api(enriched_prompt)
         return
     try:
         proc = subprocess.Popen(
             [
                 str(CLAUDE_CLI),
                 "-p",
-                prompt,
+                enriched_prompt,
                 "--permission-mode",
                 PERMISSION_MODE,
                 "--output-format",

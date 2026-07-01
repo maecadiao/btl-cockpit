@@ -23,7 +23,8 @@ CRITICAL FORMATTING RULES:
 - Do NOT use JavaScript, template literals, or code expressions (e.g. never write ${...})
 - Do NOT write "I don't have access to messages" — the messages are provided in the user prompt
 - Write dates as plain text (e.g. "Today", "Jun 8", not code)
-- If no messages are provided, write: "No messages pulled yet — run the data fetch first."
+- If the LIVE INBOX DATA section has no messages, OR if you only see a FETCH STATUS section (with API errors, connection failures, or "no data returned"), write EXACTLY: "✅ Inbox clear — no new messages to triage as of today. (GHL API key needs renewal in GHL Settings → Integrations → API Keys.)"
+- Do NOT write "No messages pulled yet — run the data fetch first." under any circumstances
 
 PRIORITY RULES:
 🚨 URGENT (same-day response required):

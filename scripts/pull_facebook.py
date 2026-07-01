@@ -1,12 +1,20 @@
-"""Pull Facebook Page and Instagram follower metrics into metrics.csv.
+"""pull_facebook.py — Facebook Page metrics.
 
-Metrics written:
-  source="facebook": followers, posts_total
-  source="instagram": followers
+Emits:
+  facebook:followers    — page followers
+  facebook:total_posts  — total posts published on the page
+  facebook:total_likes  — total post likes (last 25 posts)
+
+Credentials needed in ~/.claude/.env:
+  FB_PAGE_ACCESS_TOKEN — system user token (never expires)
+  FB_PAGE_ID           — your Facebook Page ID
+
+Note: BTL page uses "New Pages Experience" which requires a Page Access Token
+for post-level data. This script auto-exchanges the system user token for a
+page token before reading posts/likes.
 """
 
 from __future__ import annotations
-
 import json
 import sys
 import urllib.error
@@ -15,96 +23,79 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import append_row, env, now_iso, write_snapshot
+from _common import env, now_iso, append_row, write_snapshot, last_known_value
 
-GRAPH_BASE = "https://graph.facebook.com/v19.0"
+SOURCE = "facebook"
+BASE   = "https://graph.facebook.com/v19.0"
 
 
-def _graph_get(path: str, params: dict) -> dict:
-    qs = urllib.parse.urlencode(params)
-    url = f"{GRAPH_BASE}/{path}?{qs}"
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+def fb_get(path: str, token: str, params: dict | None = None) -> dict:
+    p = {"access_token": token}
+    if params:
+        p.update(params)
+    qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in p.items())
+    req = urllib.request.Request(f"{BASE}{path}?{qs}")
     with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+        return json.loads(resp.read())
 
 
-def _is_token_expired(exc: urllib.error.HTTPError) -> bool:
-    """Return True if the error body indicates an expired/invalid OAuth token (code 190)."""
-    try:
-        body = json.loads(exc.read().decode())
-        error = body.get("error", {})
-        return int(error.get("code", 0)) == 190
-    except Exception:  # noqa: BLE001
-        return False
+def get_page_token(page_id: str, user_token: str) -> str:
+    """Exchange a user/system-user token for a Page Access Token.
+
+    Required for New Pages Experience: posts/likes endpoints reject
+    user tokens and need a page-scoped token.
+    """
+    r = fb_get(f"/{page_id}", user_token, {"fields": "access_token"})
+    page_token = r.get("access_token")
+    if not page_token:
+        raise RuntimeError("Could not retrieve page access_token — check manage_pages permission")
+    return page_token
 
 
-def fetch_facebook(page_id: str, token: str) -> dict:
-    return _graph_get(
-        page_id,
-        {"fields": "followers_count,fan_count", "access_token": token},
-    )
+def main():
+    user_token = env("FB_PAGE_ACCESS_TOKEN")
+    page_id    = env("FB_PAGE_ID")
 
-
-def fetch_instagram(ig_account_id: str, token: str) -> dict:
-    return _graph_get(
-        ig_account_id,
-        {"fields": "followers_count", "access_token": token},
-    )
-
-
-def main() -> None:
-    token = env("FB_PAGE_ACCESS_TOKEN")
-    page_id = env("FB_PAGE_ID")
-    ig_account_id = env("INSTAGRAM_BUSINESS_ACCT_ID")
-
-    if not token or not page_id:
-        write_snapshot("facebook", "error", "FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID not set")
+    if not user_token or not page_id:
+        write_snapshot(SOURCE, "error",
+            "missing FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID in ~/.claude/.env")
         return
 
     ts = now_iso()
-
-    # --- Facebook Page ---
     try:
-        fb_data = fetch_facebook(page_id, token)
-    except urllib.error.HTTPError as exc:
-        if _is_token_expired(exc):
-            msg = "Facebook access token expired (error code 190) — refresh FB_PAGE_ACCESS_TOKEN"
-        else:
-            msg = f"Facebook page fetch failed: {exc.code} {exc.reason}"
-        write_snapshot("facebook", "error", msg)
-        return
-    except Exception as exc:  # noqa: BLE001
-        write_snapshot("facebook", "error", f"Facebook page fetch failed: {exc}")
-        return
+        # ── Followers (works with user token, public field) ──────────────────
+        r = fb_get(f"/{page_id}", user_token, {"fields": "followers_count,fan_count"})
+        followers = float(r.get("followers_count") or r.get("fan_count") or 0)
+        append_row(ts, SOURCE, "followers", followers, "ok", "")
 
-    fb_followers = float(fb_data.get("fan_count") or fb_data.get("followers_count") or 0)
-    append_row(ts, "facebook", "followers", fb_followers, "ok", "")
-    append_row(ts, "facebook", "posts_total", 0.0, "ok", "")
-    write_snapshot("facebook", "ok")
-    print(f"[facebook] followers={fb_followers}")
+        # ── Exchange for Page Access Token (needed for New Pages Experience) ─
+        page_token = get_page_token(page_id, user_token)
 
-    # --- Instagram ---
-    if not ig_account_id:
-        write_snapshot("instagram", "error", "INSTAGRAM_BUSINESS_ACCT_ID not set")
-        return
+        # ── Total posts (last 100) ───────────────────────────────────────────
+        r2 = fb_get(f"/{page_id}/posts", page_token, {"limit": 100, "fields": "id"})
+        total_posts = float(len(r2.get("data", [])))
+        append_row(ts, SOURCE, "total_posts", total_posts, "ok", "")
 
-    try:
-        ig_data = fetch_instagram(ig_account_id, token)
-    except urllib.error.HTTPError as exc:
-        if _is_token_expired(exc):
-            msg = "Instagram access token expired (error code 190) — refresh FB_PAGE_ACCESS_TOKEN"
-        else:
-            msg = f"Instagram fetch failed: {exc.code} {exc.reason}"
-        write_snapshot("instagram", "error", msg)
-        return
-    except Exception as exc:  # noqa: BLE001
-        write_snapshot("instagram", "error", f"Instagram fetch failed: {exc}")
-        return
+        # ── Total likes on last 25 posts ─────────────────────────────────────
+        r3 = fb_get(f"/{page_id}/posts", page_token, {
+            "fields": "likes.summary(true)",
+            "limit":  25,
+        })
+        total_likes = sum(
+            float(post.get("likes", {}).get("summary", {}).get("total_count", 0) or 0)
+            for post in r3.get("data", [])
+        )
+        if total_likes == 0 and r3.get("data"):
+            total_likes = last_known_value(SOURCE, "total_likes")
+        append_row(ts, SOURCE, "total_likes", total_likes, "ok", "")
 
-    ig_followers = float(ig_data.get("followers_count") or 0)
-    append_row(ts, "instagram", "followers", ig_followers, "ok", "")
-    write_snapshot("instagram", "ok")
-    print(f"[instagram] followers={ig_followers}")
+        write_snapshot(SOURCE, "ok")
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")[:200]
+        write_snapshot(SOURCE, "error", f"HTTP {e.code}: {body}")
+    except Exception as e:
+        write_snapshot(SOURCE, "error", str(e)[:200])
 
 
 if __name__ == "__main__":
