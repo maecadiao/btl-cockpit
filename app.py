@@ -3796,7 +3796,7 @@ if _view_q in ("runs", "drafts"):
     )[:50]
     st.markdown(
         f'<div style="padding:1.2rem 0 0.5rem 0">'
-        f'<a href="/" style="display:inline-block;color:#aeb8cc;font-size:0.85rem;text-decoration:none;'
+        f'<a href="/" target="_self" style="display:inline-block;color:#aeb8cc;font-size:0.85rem;text-decoration:none;'
         f'padding:0.35rem 0.9rem;border-radius:999px;box-shadow:0 0 0 1px rgba(168,190,225,0.25)">'
         f'← Back to cockpit</a></div>'
         f'<div style="padding:0.6rem 0 0.5rem 0">'
@@ -3811,13 +3811,13 @@ if _view_q in ("runs", "drafts"):
         _rel = _f.relative_to(VAULT_PATH).as_posix()
         st.markdown(
             f'<div style="padding:0.3rem 0;border-bottom:1px solid #222">'
-            f'<a href="?run={quote(_rel)}" style="color:#f2b544;text-decoration:none">{html_escape(_label)}</a>'
+            f'<a href="?run={quote(_rel)}" target="_self" style="color:#f2b544;text-decoration:none">{html_escape(_label)}</a>'
             f'<span style="color:#555;font-size:0.75rem;margin-left:1rem">{_mtime.strftime("%Y-%m-%d %H:%M")}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
     st.markdown(
-        '<div style="margin-top:2rem"><a href="/" style="color:#888;font-size:0.8rem;text-decoration:none">← back to dashboard</a></div>',
+        '<div style="margin-top:2rem"><a href="/" target="_self" style="color:#888;font-size:0.8rem;text-decoration:none">← back to dashboard</a></div>',
         unsafe_allow_html=True,
     )
     st.stop()
@@ -3845,7 +3845,7 @@ if _run_q:
             _run_time = _fm.get("time", "")
             st.markdown(
                 f"""<div style="padding:1.2rem 0 0 0">
-                <a href="/" style="display:inline-block;color:#aeb8cc;font-size:0.85rem;text-decoration:none;
+                <a href="/" target="_self" style="display:inline-block;color:#aeb8cc;font-size:0.85rem;text-decoration:none;
                 padding:0.35rem 0.9rem;border-radius:999px;box-shadow:0 0 0 1px rgba(168,190,225,0.25)">
                 ← Back to cockpit</a>
                 </div>
@@ -3863,7 +3863,7 @@ if _run_q:
             st.markdown(_body)
             st.markdown(
                 '<div style="margin-top:2rem">'
-                '<a href="/" style="color:#888;font-size:0.8rem;text-decoration:none">'
+                '<a href="/" target="_self" style="color:#888;font-size:0.8rem;text-decoration:none">'
                 '← back to dashboard</a></div>',
                 unsafe_allow_html=True,
             )
