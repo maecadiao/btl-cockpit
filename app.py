@@ -3795,7 +3795,11 @@ if _view_q in ("runs", "drafts"):
         key=lambda p: p.stat().st_mtime, reverse=True
     )[:50]
     st.markdown(
-        f'<div style="padding:1.5rem 0 0.5rem 0">'
+        f'<div style="padding:1.2rem 0 0.5rem 0">'
+        f'<a href="/" style="display:inline-block;color:#aeb8cc;font-size:0.85rem;text-decoration:none;'
+        f'padding:0.35rem 0.9rem;border-radius:999px;box-shadow:0 0 0 1px rgba(168,190,225,0.25)">'
+        f'← Back to cockpit</a></div>'
+        f'<div style="padding:0.6rem 0 0.5rem 0">'
         f'<span style="font-family:monospace;font-size:0.75rem;color:#888;letter-spacing:0.12em">§ {_folder_title}</span></div>',
         unsafe_allow_html=True,
     )
@@ -3840,7 +3844,12 @@ if _run_q:
             _skill_label = _fm.get("skill", _run_path.stem.split("-", 2)[-1].replace("-", " ")).upper()
             _run_time = _fm.get("time", "")
             st.markdown(
-                f"""<div style="padding:1.5rem 0 0.5rem 0">
+                f"""<div style="padding:1.2rem 0 0 0">
+                <a href="/" style="display:inline-block;color:#aeb8cc;font-size:0.85rem;text-decoration:none;
+                padding:0.35rem 0.9rem;border-radius:999px;box-shadow:0 0 0 1px rgba(168,190,225,0.25)">
+                ← Back to cockpit</a>
+                </div>
+                <div style="padding:0.8rem 0 0.5rem 0">
                 <span style="font-family:monospace;font-size:0.75rem;color:#888;letter-spacing:0.12em">
                 § RUN RESULT
                 </span><br>
@@ -3918,7 +3927,7 @@ st.markdown(
         <a class="qn-claude" href="/" target="_self">
             <span class="qn-icon">◆</span>BTL cockpit<span class="qn-arrow">↗</span>
         </a>
-        <a href="{daily_note_uri}" target="_blank"><span class="qn-icon">§</span>daily note</a>
+        <a href="{daily_note_uri}" target="_self"><span class="qn-icon">§</span>daily note</a>
         <a href="{runs_folder_uri}" target="_self"><span class="qn-icon">¶</span>runs folder</a>
         <a href="{drafts_folder_uri}" target="_self"><span class="qn-icon">※</span>drafts</a>
         <a class="qn-pull" href="?action=pull-latest" target="_self" title="Queue /metrics-pull skill"><span class="qn-icon">↻</span>pull</a>
@@ -4178,7 +4187,7 @@ def render_latest_upload(video: dict | None) -> str:
         f'<span>latest upload · youtube</span>'
         f'<span style="margin-left:auto;color:var(--fg-mute)">{age_html} {pull_html}</span>'
         '</div>'
-        f'<div class="v2-latest-title"><a href="{url}" target="_blank">{safe_title}</a></div>'
+        f'<div class="v2-latest-title"><a href="{url}" target="_self">{safe_title}</a></div>'
         '<div class="v2-latest-stats">'
         f'<span><span class="v2-stat-val">{fmt_tokens(views)}</span><span class="v2-stat-lbl">views</span></span>'
         f'<span><span class="v2-stat-val">{fmt_tokens(likes)}</span><span class="v2-stat-lbl">likes</span></span>'
@@ -4597,7 +4606,7 @@ def render_yt_review_card(review: dict | None, tab_key: str = "audience") -> Non
         '<div class="v2-ytr-head">'
         f'<span class="v2-ytr-title">YT WEEK REVIEW · {window}</span>'
         '<span class="v2-ytr-actions">'
-        f'<a href="{full_uri}" target="_blank">FULL ↗</a>'
+        f'<a href="{full_uri}" target="_self">FULL ↗</a>'
         '</span></div>',
         unsafe_allow_html=True,
     )
@@ -4872,7 +4881,7 @@ def render_morning_brief(brief: dict | None) -> None:
         uri = run_view_uri(brief_path)
         st.markdown(
             f'<div style="text-align:right;font-size:0.65rem;margin-top:0.3rem">'
-            f'<a href="{uri}" target="_blank" style="color:var(--accent);text-decoration:none;letter-spacing:0.1em">FULL ↗</a>'
+            f'<a href="{uri}" target="_self" style="color:var(--accent);text-decoration:none;letter-spacing:0.1em">FULL ↗</a>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -5624,7 +5633,7 @@ with overview_tab:
                         try:
                             link_inner = (
                                 f'<a href="{run_view_uri(deliverable_full)}" '
-                                f'target="_blank" class="v2-queue-link" '
+                                f'target="_self" class="v2-queue-link" '
                                 f'title="open result">open ↗</a>'
                             )
                         except Exception:
@@ -5658,7 +5667,7 @@ with overview_tab:
                     f'<div class="run-row">'
                     f'<span class="run-time">{mtime.strftime("%H:%M")}</span>'
                     f'<span class="run-label">{html_escape(label)}</span>'
-                    f'<a href="{uri}" target="_blank">open ↗</a>'
+                    f'<a href="{uri}" target="_self">open ↗</a>'
                     f'</div>'
                 )
             card_html += '</div>'
@@ -5824,7 +5833,7 @@ with overview_tab:
                     f'<span class="cpt-verb {it["verb"]}">{it["verb"]}</span>'
                     '<div class="cpt-pulse-main">'
                     f'<div class="cpt-pulse-name">'
-                    f'<a href="{uri}" target="_blank" '
+                    f'<a href="{uri}" target="_self" '
                     'style="color:inherit;text-decoration:none;">'
                     f'{html_escape(it["name"])}</a></div>'
                     f'<div class="cpt-pulse-dir">{html_escape(it["dir"])}</div>'
@@ -5876,7 +5885,7 @@ with overview_tab:
                     '<div class="mon-inbox-row">'
                     f'<span class="mon-dot" style="background:{dot_color}"></span>'
                     f'<span class="mon-inbox-name">'
-                    f'<a href="{html_escape(it["url"])}" target="_blank" '
+                    f'<a href="{html_escape(it["url"])}" target="_self" '
                     f'style="color:inherit;text-decoration:none;">'
                     f'{html_escape(it["name"])}</a></span>'
                     f'{badge_html}'
@@ -5886,7 +5895,7 @@ with overview_tab:
                 board_url = "https://bethelightdecor.monday.com/boards/18413165283"
                 inbox_html += (
                     f'<div class="mon-inbox-footer">'
-                    f'<a href="{board_url}" target="_blank" '
+                    f'<a href="{board_url}" target="_self" '
                     f'style="color:var(--fg-mute);text-decoration:none;">'
                     f'+{total - 8} more · view all →</a></div>'
                 )
@@ -5920,7 +5929,7 @@ with overview_tab:
                     uri = run_view_uri(saved)
                     rel = saved.relative_to(VAULT_PATH).as_posix()
                     saved_link = (
-                        f'<a class="obsidian-link" href="{uri}" target="_blank">◆ open result · {rel}</a>'
+                        f'<a class="obsidian-link" href="{uri}" target="_self">◆ open result · {rel}</a>'
                     )
 
                 meta_html = ""
@@ -6280,7 +6289,7 @@ with social_tab:
                     '<div class="sched-perm-warn">'
                     '⚠ <strong>Needs upgrade:</strong> your Facebook token is read-only. '
                     'To enable scheduling, generate a new token at '
-                    '<a href="https://developers.facebook.com/tools/explorer/" target="_blank" '
+                    '<a href="https://developers.facebook.com/tools/explorer/" target="_self" '
                     'style="color:var(--warn)">developers.facebook.com/tools/explorer</a> '
                     'with <code>pages_manage_posts</code> permission, then update '
                     '<code>FB_PAGE_ACCESS_TOKEN</code> in <code>~/.claude/.env</code>.'
@@ -6439,7 +6448,7 @@ with social_tab:
                     _cal_html += (
                         '<div class="sched-cal-post">'
                         f'<div class="sched-cal-post-date">{_mp_label}</div>'
-                        f'<a href="{_mp_url}" target="_blank" style="text-decoration:none">'
+                        f'<a href="{_mp_url}" target="_self" style="text-decoration:none">'
                         f'<div class="sched-cal-post-msg">{_mp_msg}</div></a>'
                         '</div>'
                     )
@@ -6480,7 +6489,7 @@ with social_tab:
                     'background:var(--bg-elev)">f</div>'
                 )
                 _posts_html += (
-                    f'<a class="fb-post-card" href="{_url}" target="_blank">'
+                    f'<a class="fb-post-card" href="{_url}" target="_self">'
                     f'{_img_html}'
                     '<div class="fb-post-body">'
                     f'<div class="fb-post-msg">{_msg}</div>'
