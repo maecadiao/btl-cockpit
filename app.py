@@ -3551,6 +3551,19 @@ def _run_skill_bg(prompt: str):
             sections.append("=== FETCH STATUS ===\nNo inbox sources returned data.")
         fetch_context = "\n\n".join(sections).strip()
         enriched_prompt = f"{prompt}\n\n{fetch_context}"
+    elif not _CLAUDE_CLI_USABLE:
+        # Cloud API path has no tool access — inject live data for data-dependent
+        # skills (QBO invoices, GHL pipeline, Jobber jobs, metrics.csv, calendar).
+        # The local CLI path skips this: skills fetch their own data via tools there,
+        # and long enriched prompts break enqueue.bat argument passing.
+        try:
+            from skill_context import build_skill_context
+            cal = read_calendar_events() if "crew-schedule-brief" in prompt else None
+            ctx = build_skill_context(prompt, VAULT_PATH, calendar_events=cal)
+            if ctx:
+                enriched_prompt = f"{prompt}\n\n{ctx}"
+        except Exception as e:  # noqa: BLE001 — enrichment must never kill a run
+            enriched_prompt = f"{prompt}\n\n=== FETCH STATUS ===\nLive data fetch errored: {str(e)[:150]}"
 
     # inbox-monitor-digest: always use direct API — data is already pre-fetched above,
     # and passing a long enriched prompt via enqueue.bat %* breaks on special chars.

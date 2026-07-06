@@ -31,6 +31,25 @@ SOURCE = "qbo"
 TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 BASE_URL  = "https://quickbooks.api.intuit.com/v3/company"
 
+# Intuit ROTATES the refresh token: each refresh may invalidate the old value.
+# Exactly one machine may own the token, and it must persist every rotation —
+# a second machine refreshing with a stale copy kills both. On Railway, set
+# QBO_TOKEN_STORE to a path on the persistent volume (e.g. /data/qbo_refresh_token);
+# the env-var QBO_REFRESH_TOKEN then only seeds the store on first run.
+_TOKEN_STORE = env("QBO_TOKEN_STORE")
+
+
+def current_refresh_token() -> str:
+    """Latest refresh token: token-store file first (survives rotation), then env."""
+    if _TOKEN_STORE:
+        try:
+            stored = Path(_TOKEN_STORE).read_text(encoding="utf-8").strip()
+            if stored:
+                return stored
+        except OSError:
+            pass
+    return env("QBO_REFRESH_TOKEN") or ""
+
 
 def get_access_token(client_id: str, client_secret: str, refresh_token: str) -> str:
     """Refresh QBO access token. Saves any new refresh_token Intuit returns so
@@ -59,7 +78,15 @@ def get_access_token(client_id: str, client_secret: str, refresh_token: str) -> 
 
 
 def _save_refresh_token(new_token: str) -> None:
-    """Persist an updated QBO_REFRESH_TOKEN back to ~/.claude/.env."""
+    """Persist a rotated QBO_REFRESH_TOKEN to the token store (or ~/.claude/.env)."""
+    if _TOKEN_STORE:
+        try:
+            store = Path(_TOKEN_STORE)
+            store.parent.mkdir(parents=True, exist_ok=True)
+            store.write_text(new_token, encoding="utf-8")
+            return
+        except OSError:
+            pass  # fall through to .env attempt
     import re
     env_path = Path.home() / ".claude" / ".env"
     if not env_path.exists():
@@ -85,7 +112,7 @@ def qbo_query(realm_id: str, token: str, query: str) -> dict:
 def main():
     client_id     = env("QBO_CLIENT_ID")
     client_secret = env("QBO_CLIENT_SECRET")
-    refresh_token = env("QBO_REFRESH_TOKEN")
+    refresh_token = current_refresh_token()
     realm_id      = env("QBO_REALM_ID")
 
     if not all([client_id, client_secret, refresh_token, realm_id]):
