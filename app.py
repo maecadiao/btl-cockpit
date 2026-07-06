@@ -5524,6 +5524,7 @@ with overview_tab:
             ),
             unsafe_allow_html=True,
         )
+    st.markdown('<div class="cpt-cat">business at a glance</div>', unsafe_allow_html=True)
     render_metric_cards(
         OVERVIEW_CARDS,
         metric_snapshots(VAULT_PATH, OVERVIEW_CARDS, _range_start, _range_end),

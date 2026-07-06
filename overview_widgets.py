@@ -132,12 +132,13 @@ def render_range_bar() -> tuple[datetime | None, datetime | None]:
 
 # ── Metric cards ──────────────────────────────────────────────────────────────
 
+# Plain-English labels — the team shouldn't need to know accounting acronyms.
 OVERVIEW_CARDS = [
-    {"source": "qbo",    "metric": "ar_balance",   "label": "AR Balance",   "format": "currency"},
-    {"source": "qbo",    "metric": "revenue_mtd",  "label": "Revenue MTD",  "format": "currency"},
-    {"source": "ghl",    "metric": "active_leads", "label": "Active Leads", "format": "integer"},
-    {"source": "jobber", "metric": "jobs_today",   "label": "Jobs Today",   "format": "integer"},
-    {"source": "ghl",    "metric": "inbox_unread", "label": "Inbox Flags",  "format": "integer"},
+    {"source": "qbo",    "metric": "ar_balance",   "label": "Money Owed to Us",   "format": "currency"},
+    {"source": "qbo",    "metric": "revenue_mtd",  "label": "Revenue This Month", "format": "currency"},
+    {"source": "ghl",    "metric": "active_leads", "label": "Active Leads",       "format": "integer"},
+    {"source": "jobber", "metric": "jobs_today",   "label": "Jobs Today",         "format": "integer"},
+    {"source": "ghl",    "metric": "inbox_unread", "label": "Unread Messages",    "format": "integer"},
 ]
 
 

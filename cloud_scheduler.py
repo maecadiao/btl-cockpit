@@ -14,6 +14,7 @@ same env var scripts/_common.py already honors.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -55,9 +56,40 @@ def _loop(vault_path: Path) -> None:
         time.sleep(REFRESH_INTERVAL_SEC)
 
 
+def _persist_to_volume(vault_path: Path) -> None:
+    """Symlink metrics + run history into the Railway volume so they survive
+    redeploys. Without this, every deploy wipes metrics.csv (so metric-card
+    deltas never accumulate) and the team's run history disappears."""
+    data_vol = Path("/data")
+    if not data_vol.is_dir():
+        return
+    for sub in ("metrics", "runs"):
+        durable = data_vol / sub
+        durable.mkdir(parents=True, exist_ok=True)
+        ephemeral = vault_path / "system" / sub
+        try:
+            if ephemeral.is_symlink():
+                continue
+            if ephemeral.is_dir():
+                # first boot with the volume: keep any files the repo shipped
+                for f in ephemeral.rglob("*"):
+                    if f.is_file():
+                        dest = durable / f.relative_to(ephemeral)
+                        if not dest.exists():
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            dest.write_bytes(f.read_bytes())
+                shutil.rmtree(ephemeral)
+            ephemeral.parent.mkdir(parents=True, exist_ok=True)
+            ephemeral.symlink_to(durable, target_is_directory=True)
+            print(f"[cloud_scheduler] {ephemeral} -> {durable}")
+        except OSError as exc:
+            print(f"[cloud_scheduler] persist link failed for {sub}: {exc}")
+
+
 def start_cloud_scheduler(vault_path: Path, local_vault_marker: Path) -> None:
     """Start the background refresh loop, unless running on the office PC."""
     if local_vault_marker.exists():
         return  # local machine already has its own runner for this
+    _persist_to_volume(vault_path)
     thread = threading.Thread(target=_loop, args=(vault_path,), daemon=True)
     thread.start()
