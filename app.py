@@ -1433,6 +1433,90 @@ hr.chapter::after { content: none; }
     line-height: 1.3;
 }
 
+/* ─── Overview widgets (ported from the Obsidian cockpit layout) ─── */
+.btl-mc-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin: 0.2rem 0 0.6rem 0;
+}
+@media (max-width: 900px) { .btl-mc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.btl-mc {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 0.7rem 0.9rem 0.65rem;
+    box-shadow: 0 0 0 1px var(--ring-soft), 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+.btl-mc-head { display: flex; justify-content: space-between; align-items: center; }
+.btl-mc-label {
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+}
+.btl-mc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.btl-mc-dot.ok    { background: #86c290; box-shadow: 0 0 6px rgba(134, 194, 144, 0.7); }
+.btl-mc-dot.stale { background: #e0b06a; box-shadow: 0 0 6px rgba(224, 176, 106, 0.6); }
+.btl-mc-dot.error { background: #d05a5a; box-shadow: 0 0 6px rgba(208, 90, 90, 0.6); }
+.btl-mc-dot.none  { background: rgba(168, 190, 225, 0.25); }
+.btl-mc-value {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 1.75rem;
+    font-weight: 550;
+    color: var(--fg);
+    line-height: 1.15;
+    margin-top: 0.2rem;
+    font-variant-numeric: tabular-nums;
+}
+.btl-mc-delta { font-size: 0.72rem; letter-spacing: 0.03em; }
+.btl-mc-delta.up   { color: #86c290; }
+.btl-mc-delta.down { color: #e08a6a; }
+.btl-mc-delta.flat { color: var(--fg-mute); }
+
+.btl-range-label {
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    padding-top: 0.55rem;
+}
+.btl-panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border-bottom: 1px solid var(--ring-soft);
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.5rem;
+}
+.btl-panel-head .btl-panel-meta { color: var(--fg-mute); letter-spacing: 0.06em; }
+.btl-tasks-empty { color: var(--fg-mute); font-size: 0.82rem; padding: 0.3rem 0 0.5rem; }
+
+/* LIVE badge in the header */
+.btl-live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.7rem;
+    padding: 0.18rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(242, 181, 68, 0.45);
+    background: rgba(242, 181, 68, 0.07);
+}
+.btl-live-pill .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(242, 181, 68, 0.8);
+    animation: v2-tb-pulse 1.6s ease-in-out infinite;
+}
+
 /* Reveal body after PREMIUM_CSS parses — overrides pre-hide from earlier inline style. */
 body { opacity: 1; transition: opacity 0.18s ease-out; }
 </style>
@@ -3891,6 +3975,7 @@ st.markdown(
     '</h1>'
     f'<div class="caption-mono title-crumb">{_greeting} · '
     f'{_now_local.strftime("%A, %B %d")} · Covington, LA'
+    f'<span class="btl-live-pill"><span class="dot"></span>live</span>'
     f'{"&nbsp;&nbsp;<span class=\"v2-demo-pill\">demo mode</span>" if getattr(_cfg, "DEMO_MODE", False) else ""}'
     f'</div>'
     '</div>',
@@ -5382,18 +5467,34 @@ _enabled_cards = getattr(_cfg, "ENABLED_CARDS", {}) or {}
 # (5h / weekly / routines). Mirrors the Obsidian cockpit pattern.
 # ═══════════════════════════════════════════════════════════
 
-if _enabled_cards.get("tokenburn", True):
-    st.markdown(
-        render_tokenburn_meter(
-            used=five_h_tokens,
-            budget=LIMITS["five_hour_tokens"],
-            reset_at=five_h_reset,
-            last_pull_ts=read_last_pull_ts(),
-        ),
-        unsafe_allow_html=True,
-    )
+# Tabs are created up front so every section below lands inside its tab —
+# layout mirrors the original Obsidian cockpit (overview…admin, skills).
+overview_tab, ghl_tab, jobber_tab, social_tab, qbo_tab, admin_tab, skills_tab = st.tabs([
+    "overview", "ghl", "jobber", "social", "quickbooks", "admin", "skills",
+])
 
-st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+from overview_widgets import (
+    OVERVIEW_CARDS, metric_snapshots, render_metric_cards,
+    render_range_bar, render_tasks_card,
+)
+
+with overview_tab:
+    _range_start, _range_end = render_range_bar()
+    if _enabled_cards.get("tokenburn", True):
+        st.markdown(
+            render_tokenburn_meter(
+                used=five_h_tokens,
+                budget=LIMITS["five_hour_tokens"],
+                reset_at=five_h_reset,
+                last_pull_ts=read_last_pull_ts(),
+            ),
+            unsafe_allow_html=True,
+        )
+    render_metric_cards(
+        OVERVIEW_CARDS,
+        metric_snapshots(VAULT_PATH, OVERVIEW_CARDS, _range_start, _range_end),
+    )
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -5519,7 +5620,8 @@ if mcp_servers:
             f'{html_escape(name)}'
             f'</span>'
         )
-    st.markdown(f'<div class="mcp-strip">{items_html}</div>', unsafe_allow_html=True)
+    with admin_tab:
+        st.markdown(f'<div class="mcp-strip">{items_html}</div>', unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -5537,32 +5639,57 @@ def _btl_quick_run(label: str):
     if skill:
         start_skill_run(label, skill["prompt_template"])
 
-_qa_cols = st.columns(len(_BTL_QUICK), gap="small")
-for _qi, _ql in enumerate(_BTL_QUICK):
-    with _qa_cols[_qi]:
-        st.button(
-            _ql.upper(),
-            key=f"btl_qa_{_qi}",
-            use_container_width=True,
-            on_click=_btl_quick_run,
-            args=(_ql,),
-            help=_BTL_SKILL_MAP.get(_ql, {}).get("description", ""),
-        )
+with overview_tab:
+    _qa_cols = st.columns(len(_BTL_QUICK), gap="small")
+    for _qi, _ql in enumerate(_BTL_QUICK):
+        with _qa_cols[_qi]:
+            st.button(
+                _ql,
+                key=f"btl_qa_{_qi}",
+                use_container_width=True,
+                on_click=_btl_quick_run,
+                args=(_ql,),
+                help=_BTL_SKILL_MAP.get(_ql, {}).get("description", ""),
+            )
+    st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
 
-st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
+# (tabs are created above, before the token-burn meter)
+_layout_v = "v2"  # layout is permanently v2; legacy guard kept for tab sections
 
-_layout_v = getattr(_cfg, "LAYOUT_VERSION", "v1")
-if _layout_v == "v2":
-    overview_tab, ghl_tab, jobber_tab, social_tab, qbo_tab = st.tabs([
-        "overview", "ghl", "jobber", "social", "quickbooks",
-    ])
-else:
-    from contextlib import nullcontext
-    overview_tab = nullcontext()
-    ghl_tab = nullcontext()
-    jobber_tab = nullcontext()
-    social_tab = nullcontext()
-    qbo_tab = nullcontext()
+def _skill_button_grid(items: list[dict], key_prefix: str) -> None:
+    """4-up grid of skill buttons. No-input skills run immediately;
+    input skills point the user at the overview prompt box."""
+    cols = st.columns(4, gap="small")
+    for i, s in enumerate(items):
+        with cols[i % 4]:
+            if st.button(s["label"], key=f"{key_prefix}_{s['label']}",
+                         use_container_width=True,
+                         help=s.get("description", "")):
+                if "{input}" in s["prompt_template"]:
+                    st.toast("This skill needs input — type it in the prompt box "
+                             "on the overview tab, then pick the skill chip there.",
+                             icon="✍️")
+                else:
+                    start_skill_run(s["label"], s["prompt_template"])
+                    st.rerun()
+
+_sk_by_cat: dict[str, list[dict]] = {}
+for _s in SKILLS:
+    _sk_by_cat.setdefault(_s.get("category", "other"), []).append(_s)
+
+with skills_tab:
+    for _cat in SKILL_CATEGORY_ORDER:
+        _items = _sk_by_cat.get(_cat, [])
+        if not _items:
+            continue
+        st.markdown(f'<div class="cpt-cat">{_cat}</div>', unsafe_allow_html=True)
+        _skill_button_grid(_items, f"sktab_{_cat}")
+
+with admin_tab:
+    _admin_items = _sk_by_cat.get("admin", [])
+    if _admin_items:
+        st.markdown('<div class="cpt-cat">admin skills</div>', unsafe_allow_html=True)
+        _skill_button_grid(_admin_items, "admtab")
 
 with overview_tab:
 
@@ -5581,19 +5708,23 @@ with overview_tab:
         with _sd_cols[1]:
             if _show_drv:
                 render_daily_drivers_widget(_daily["drivers"], _today_iso)
-            elif _show_thru:
-                # 30-day throughput chart — placeholder metric, swap name for any skill mix
-                st.markdown(
-                    '<div class="v2-panel v2-thru-panel">'
-                    '<div class="v2-panel-head">'
-                    '<span>§ AGENT RUNS · 30D</span>'
-                    f'<span class="v2-thru-meta">{_cum_total:,} total · {_cum_30d} last 30d</span>'
-                    '</div>'
-                    f'<div class="v2-thru-svg">{_build_activity_svg(df_cum)}</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
+            else:
+                # Daily tasks — team checklist, matches the Obsidian cockpit
+                render_tasks_card(VAULT_PATH)
         st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+        if _show_thru:
+            # 30-day throughput chart — full width below the schedule/tasks row
+            st.markdown(
+                '<div class="v2-panel v2-thru-panel">'
+                '<div class="v2-panel-head">'
+                '<span>§ AGENT RUNS · 30D</span>'
+                f'<span class="v2-thru-meta">{_cum_total:,} total · {_cum_30d} last 30d</span>'
+                '</div>'
+                f'<div class="v2-thru-svg">{_build_activity_svg(df_cum)}</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
     col_main, col_side = st.columns([2.6, 1], gap="large")
 
