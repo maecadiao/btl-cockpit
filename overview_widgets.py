@@ -96,7 +96,8 @@ def render_range_bar() -> tuple[datetime | None, datetime | None]:
 
     cols = st.columns([0.9, 1, 0.8, 0.8, 0.8, 0.8, 2.4, 2.4], gap="small")
     with cols[0]:
-        st.markdown('<div class="btl-range-label">Range</div>', unsafe_allow_html=True)
+        st.markdown('<div class="btl-range-label btl-range-marker">Range</div>',
+                    unsafe_allow_html=True)
     for i, (key, label) in enumerate(_RANGES):
         with cols[i + 1]:
             if st.button(

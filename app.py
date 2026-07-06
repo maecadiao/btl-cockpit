@@ -1517,6 +1517,40 @@ hr.chapter::after { content: none; }
     animation: v2-tb-pulse 1.6s ease-in-out infinite;
 }
 
+/* Range + quick-action rows stay horizontal (Streamlit stacks columns on
+   narrow viewports; these rows must read as toolbars, not stacked buttons) */
+[data-testid="stHorizontalBlock"]:has(.btl-range-marker),
+[data-testid="stHorizontalBlock"]:has(.btl-qa-marker) {
+    flex-wrap: nowrap !important;
+    gap: 0.45rem !important;
+    align-items: center !important;
+}
+[data-testid="stHorizontalBlock"]:has(.btl-range-marker) > [data-testid="stColumn"],
+[data-testid="stHorizontalBlock"]:has(.btl-range-marker) > [data-testid="column"],
+[data-testid="stHorizontalBlock"]:has(.btl-qa-marker) > [data-testid="stColumn"],
+[data-testid="stHorizontalBlock"]:has(.btl-qa-marker) > [data-testid="column"] {
+    min-width: 0 !important;
+    width: auto !important;
+    flex: 1 1 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(.btl-range-marker) button,
+[data-testid="stHorizontalBlock"]:has(.btl-qa-marker) button {
+    white-space: nowrap !important;
+    padding: 0.42rem 0.55rem !important;
+    font-size: 0.76rem !important;
+    text-align: center !important;
+}
+[data-testid="stHorizontalBlock"]:has(.btl-range-marker) [data-testid="stDateInput"] input {
+    font-size: 0.74rem !important;
+    padding: 0.3rem 0.5rem !important;
+}
+@media (max-width: 720px) {
+    [data-testid="stHorizontalBlock"]:has(.btl-range-marker),
+    [data-testid="stHorizontalBlock"]:has(.btl-qa-marker) {
+        flex-wrap: wrap !important;
+    }
+}
+
 /* Reveal body after PREMIUM_CSS parses — overrides pre-hide from earlier inline style. */
 body { opacity: 1; transition: opacity 0.18s ease-out; }
 </style>
@@ -5643,6 +5677,8 @@ with overview_tab:
     _qa_cols = st.columns(len(_BTL_QUICK), gap="small")
     for _qi, _ql in enumerate(_BTL_QUICK):
         with _qa_cols[_qi]:
+            if _qi == 0:
+                st.markdown('<span class="btl-qa-marker"></span>', unsafe_allow_html=True)
             st.button(
                 _ql,
                 key=f"btl_qa_{_qi}",
