@@ -310,11 +310,12 @@ def build_skill_context(prompt: str, vault_path: Path,
 
     data_parts = [d for d, _ in parts if d]
     notes = [n for _, n in parts if n]
-    sections = []
+    now_local = datetime.now(BTL_TZ)
+    sections = [f"=== TODAY ===\n{now_local.strftime('%A, %B %d, %Y')} (America/Chicago)\n"]
     if data_parts:
         sections.append("\n".join(data_parts))
     if notes:
         sections.append("=== FETCH STATUS ===\n" + "\n".join(notes))
-    if not sections:
+    if len(sections) == 1:
         sections.append("=== FETCH STATUS ===\nNo live data sources returned data.")
     return "\n\n".join(sections).strip()
