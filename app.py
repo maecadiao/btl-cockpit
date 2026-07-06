@@ -1602,6 +1602,65 @@ V2_CSS = r"""
         linear-gradient(180deg, #0a111f 0%, #0d1526 40%, #111c33 100%) !important;
     background-attachment: fixed !important;
 }
+
+/* ─── Lightscape: scattered landscape lights + faint stars ───
+   Two fixed overlay layers built purely from tiled radial-gradients.
+   ::before = warm bokeh lights (soft, varied sizes) — slow breathing glow.
+   ::after  = tiny cool stars — counter-phase twinkle. */
+.stApp::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+        /* large soft bokeh — distant porch lights */
+        radial-gradient(circle at 120px 90px,  rgba(242, 181, 68, 0.16) 0, rgba(242, 181, 68, 0.05) 3px, transparent 7px),
+        radial-gradient(circle at 520px 340px, rgba(255, 205, 120, 0.13) 0, rgba(255, 205, 120, 0.04) 4px, transparent 9px),
+        radial-gradient(circle at 860px 150px, rgba(242, 181, 68, 0.12) 0, rgba(242, 181, 68, 0.04) 3px, transparent 7px),
+        radial-gradient(circle at 300px 560px, rgba(255, 190, 100, 0.10) 0, rgba(255, 190, 100, 0.03) 5px, transparent 11px),
+        radial-gradient(circle at 1020px 480px, rgba(242, 181, 68, 0.14) 0, rgba(242, 181, 68, 0.04) 3px, transparent 8px),
+        radial-gradient(circle at 680px 640px, rgba(255, 205, 120, 0.09) 0, rgba(255, 205, 120, 0.03) 4px, transparent 10px),
+        /* small warm points — string lights far away */
+        radial-gradient(circle at 220px 260px, rgba(255, 214, 140, 0.20) 0, transparent 2.5px),
+        radial-gradient(circle at 760px 420px, rgba(255, 214, 140, 0.16) 0, transparent 2px),
+        radial-gradient(circle at 950px 300px, rgba(255, 214, 140, 0.18) 0, transparent 2px),
+        radial-gradient(circle at 430px 120px, rgba(255, 214, 140, 0.15) 0, transparent 2px),
+        radial-gradient(circle at 90px 430px,  rgba(255, 214, 140, 0.17) 0, transparent 2.5px),
+        radial-gradient(circle at 600px 40px,  rgba(255, 214, 140, 0.13) 0, transparent 2px);
+    background-size: 1160px 720px;
+    background-attachment: fixed;
+    animation: btl-lights-breathe 9s ease-in-out infinite;
+}
+.stApp::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+        /* faint cool stars */
+        radial-gradient(circle at 180px 60px,  rgba(200, 220, 255, 0.14) 0, transparent 1.5px),
+        radial-gradient(circle at 640px 200px, rgba(200, 220, 255, 0.10) 0, transparent 1.5px),
+        radial-gradient(circle at 380px 380px, rgba(200, 220, 255, 0.12) 0, transparent 1.5px),
+        radial-gradient(circle at 900px 80px,  rgba(200, 220, 255, 0.11) 0, transparent 1.5px),
+        radial-gradient(circle at 80px 260px,  rgba(200, 220, 255, 0.09) 0, transparent 1px),
+        radial-gradient(circle at 820px 520px, rgba(200, 220, 255, 0.10) 0, transparent 1.5px),
+        radial-gradient(circle at 500px 590px, rgba(200, 220, 255, 0.08) 0, transparent 1px),
+        /* a few extra warm sparks on an offset tile for depth */
+        radial-gradient(circle at 260px 500px, rgba(255, 214, 140, 0.12) 0, transparent 2px),
+        radial-gradient(circle at 1050px 220px, rgba(255, 214, 140, 0.10) 0, transparent 2px);
+    background-size: 1340px 860px;
+    background-attachment: fixed;
+    animation: btl-lights-breathe 13s ease-in-out infinite reverse;
+}
+@keyframes btl-lights-breathe {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
+}
+/* Content sits above the light field */
+.stApp > * { position: relative; z-index: 1; }
+
 /* Card backgrounds opaque-ish so the texture doesn't bleed through */
 .v2-latest, .v2-audience-card, .v2-tb-wrap, .v2-ytr-card,
 .v2-mb-tile, .v2-panel, .v2-perf-card {
