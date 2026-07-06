@@ -4,7 +4,16 @@
     {
       "name": "btl-dashboard",
       "runtimeExecutable": "streamlit",
-      "runtimeArgs": ["run", "app.py", "--server.headless", "true", "--server.port", "8501", "--server.address", "localhost"],
+      "runtimeArgs": [
+        "run",
+        "app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8501",
+        "--server.address",
+        "localhost"
+      ],
       "port": 8501
     }
   ]
