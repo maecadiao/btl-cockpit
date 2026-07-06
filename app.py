@@ -1588,18 +1588,24 @@ V2_CSS = r"""
     padding-right: 6px !important;
 }
 
-/* Dusk Glow atmosphere — twilight sky with warm lamplight halos, no hatching */
+/* Dusk Glow atmosphere — a lit landscape at night */
 .stApp {
     background:
-        /* warm dusk glow rising from the horizon (bottom) */
-        radial-gradient(ellipse 120% 45% at 50% 102%, rgba(242, 181, 68, 0.10) 0%, transparent 60%),
+        /* treeline silhouette pinned to the bottom of the viewport */
+        url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%201440%20200%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20fill%3D%22%230c1628%22%20d%3D%22M0%2C200%20L0%2C128%20Q30%2C110%2065%2C118%20Q95%2C96%20130%2C112%20Q170%2C88%20210%2C106%20Q245%2C92%20280%2C104%20Q330%2C70%20385%2C98%20Q420%2C84%20460%2C96%20Q510%2C64%20570%2C92%20Q615%2C78%20660%2C90%20Q705%2C58%20765%2C88%20Q810%2C74%20855%2C86%20Q905%2C60%20960%2C88%20Q1000%2C72%201045%2C86%20Q1090%2C56%201150%2C84%20Q1195%2C70%201240%2C84%20Q1290%2C62%201345%2C86%20Q1395%2C74%201440%2C84%20L1440%2C200%20Z%22/%3E%3Cpath%20fill%3D%22%23070e1a%22%20d%3D%22M0%2C200%20L0%2C152%20Q45%2C132%2090%2C142%20Q135%2C116%20185%2C134%20Q230%2C120%20275%2C132%20Q320%2C100%20380%2C126%20Q430%2C110%20480%2C124%20Q530%2C94%20595%2C120%20Q650%2C104%20705%2C118%20Q755%2C90%20820%2C116%20Q875%2C102%20930%2C114%20Q985%2C88%201050%2C112%20Q1105%2C98%201160%2C110%20Q1215%2C86%201280%2C110%20Q1340%2C96%201390%2C108%20Q1420%2C102%201440%2C106%20L1440%2C200%20Z%22/%3E%3C/svg%3E') bottom center / 100% 200px no-repeat,
+        /* warm lamplight glows nestled in the trees */
+        radial-gradient(ellipse 14% 9% at 16% 97%, rgba(255, 196, 100, 0.22) 0%, transparent 70%),
+        radial-gradient(ellipse 11% 7% at 47% 98%, rgba(255, 205, 120, 0.16) 0%, transparent 70%),
+        radial-gradient(ellipse 15% 9% at 79% 97%, rgba(255, 190, 95, 0.20) 0%, transparent 70%),
+        /* dusk glow rising from the horizon */
+        radial-gradient(ellipse 130% 42% at 50% 103%, rgba(242, 160, 70, 0.16) 0%, rgba(190, 110, 90, 0.07) 45%, transparent 68%),
         /* soft lamplight halo behind the header */
-        radial-gradient(ellipse 75% 32% at 50% -4%, rgba(242, 181, 68, 0.09) 0%, transparent 65%),
-        /* faint moonlit blue from the upper corners */
-        radial-gradient(circle at 8% 12%, rgba(120, 150, 210, 0.05) 0%, transparent 45%),
-        radial-gradient(circle at 92% 18%, rgba(120, 150, 210, 0.04) 0%, transparent 45%),
-        /* twilight vertical ramp */
-        linear-gradient(180deg, #0a111f 0%, #0d1526 40%, #111c33 100%) !important;
+        radial-gradient(ellipse 75% 30% at 50% -4%, rgba(242, 181, 68, 0.10) 0%, transparent 65%),
+        /* moonlit blue from the upper corners */
+        radial-gradient(circle at 8% 10%, rgba(120, 150, 210, 0.07) 0%, transparent 45%),
+        radial-gradient(circle at 92% 16%, rgba(110, 140, 205, 0.06) 0%, transparent 45%),
+        /* twilight ramp: deep night -> navy -> plum-indigo dusk band at the horizon */
+        linear-gradient(180deg, #090f1d 0%, #0d1526 38%, #131d36 68%, #1d2242 88%, #2a2547 100%) !important;
     background-attachment: fixed !important;
 }
 
@@ -1615,19 +1621,19 @@ V2_CSS = r"""
     pointer-events: none;
     background-image:
         /* large soft bokeh — distant porch lights */
-        radial-gradient(circle at 120px 90px,  rgba(242, 181, 68, 0.16) 0, rgba(242, 181, 68, 0.05) 3px, transparent 7px),
-        radial-gradient(circle at 520px 340px, rgba(255, 205, 120, 0.13) 0, rgba(255, 205, 120, 0.04) 4px, transparent 9px),
-        radial-gradient(circle at 860px 150px, rgba(242, 181, 68, 0.12) 0, rgba(242, 181, 68, 0.04) 3px, transparent 7px),
-        radial-gradient(circle at 300px 560px, rgba(255, 190, 100, 0.10) 0, rgba(255, 190, 100, 0.03) 5px, transparent 11px),
-        radial-gradient(circle at 1020px 480px, rgba(242, 181, 68, 0.14) 0, rgba(242, 181, 68, 0.04) 3px, transparent 8px),
-        radial-gradient(circle at 680px 640px, rgba(255, 205, 120, 0.09) 0, rgba(255, 205, 120, 0.03) 4px, transparent 10px),
+        radial-gradient(circle at 120px 90px,  rgba(255, 200, 110, 0.38) 0, rgba(242, 181, 68, 0.12) 4px, transparent 10px),
+        radial-gradient(circle at 520px 340px, rgba(255, 205, 120, 0.30) 0, rgba(255, 205, 120, 0.10) 5px, transparent 13px),
+        radial-gradient(circle at 860px 150px, rgba(255, 195, 105, 0.28) 0, rgba(242, 181, 68, 0.09) 4px, transparent 10px),
+        radial-gradient(circle at 300px 560px, rgba(255, 190, 100, 0.24) 0, rgba(255, 190, 100, 0.08) 6px, transparent 15px),
+        radial-gradient(circle at 1020px 480px, rgba(255, 200, 110, 0.32) 0, rgba(242, 181, 68, 0.10) 4px, transparent 11px),
+        radial-gradient(circle at 680px 640px, rgba(255, 205, 120, 0.22) 0, rgba(255, 205, 120, 0.07) 5px, transparent 13px),
         /* small warm points — string lights far away */
-        radial-gradient(circle at 220px 260px, rgba(255, 214, 140, 0.20) 0, transparent 2.5px),
-        radial-gradient(circle at 760px 420px, rgba(255, 214, 140, 0.16) 0, transparent 2px),
-        radial-gradient(circle at 950px 300px, rgba(255, 214, 140, 0.18) 0, transparent 2px),
-        radial-gradient(circle at 430px 120px, rgba(255, 214, 140, 0.15) 0, transparent 2px),
-        radial-gradient(circle at 90px 430px,  rgba(255, 214, 140, 0.17) 0, transparent 2.5px),
-        radial-gradient(circle at 600px 40px,  rgba(255, 214, 140, 0.13) 0, transparent 2px);
+        radial-gradient(circle at 220px 260px, rgba(255, 220, 150, 0.45) 0, transparent 3px),
+        radial-gradient(circle at 760px 420px, rgba(255, 220, 150, 0.36) 0, transparent 2.5px),
+        radial-gradient(circle at 950px 300px, rgba(255, 220, 150, 0.40) 0, transparent 2.5px),
+        radial-gradient(circle at 430px 120px, rgba(255, 220, 150, 0.34) 0, transparent 2.5px),
+        radial-gradient(circle at 90px 430px,  rgba(255, 220, 150, 0.38) 0, transparent 3px),
+        radial-gradient(circle at 600px 40px,  rgba(255, 220, 150, 0.30) 0, transparent 2.5px);
     background-size: 1160px 720px;
     background-attachment: fixed;
     animation: btl-lights-breathe 9s ease-in-out infinite;
@@ -1640,22 +1646,22 @@ V2_CSS = r"""
     pointer-events: none;
     background-image:
         /* faint cool stars */
-        radial-gradient(circle at 180px 60px,  rgba(200, 220, 255, 0.14) 0, transparent 1.5px),
-        radial-gradient(circle at 640px 200px, rgba(200, 220, 255, 0.10) 0, transparent 1.5px),
-        radial-gradient(circle at 380px 380px, rgba(200, 220, 255, 0.12) 0, transparent 1.5px),
-        radial-gradient(circle at 900px 80px,  rgba(200, 220, 255, 0.11) 0, transparent 1.5px),
-        radial-gradient(circle at 80px 260px,  rgba(200, 220, 255, 0.09) 0, transparent 1px),
-        radial-gradient(circle at 820px 520px, rgba(200, 220, 255, 0.10) 0, transparent 1.5px),
-        radial-gradient(circle at 500px 590px, rgba(200, 220, 255, 0.08) 0, transparent 1px),
+        radial-gradient(circle at 180px 60px,  rgba(210, 226, 255, 0.30) 0, transparent 1.8px),
+        radial-gradient(circle at 640px 200px, rgba(210, 226, 255, 0.22) 0, transparent 1.8px),
+        radial-gradient(circle at 380px 380px, rgba(210, 226, 255, 0.26) 0, transparent 1.8px),
+        radial-gradient(circle at 900px 80px,  rgba(210, 226, 255, 0.24) 0, transparent 1.8px),
+        radial-gradient(circle at 80px 260px,  rgba(210, 226, 255, 0.20) 0, transparent 1.4px),
+        radial-gradient(circle at 820px 520px, rgba(210, 226, 255, 0.22) 0, transparent 1.8px),
+        radial-gradient(circle at 500px 590px, rgba(210, 226, 255, 0.18) 0, transparent 1.4px),
         /* a few extra warm sparks on an offset tile for depth */
-        radial-gradient(circle at 260px 500px, rgba(255, 214, 140, 0.12) 0, transparent 2px),
-        radial-gradient(circle at 1050px 220px, rgba(255, 214, 140, 0.10) 0, transparent 2px);
+        radial-gradient(circle at 260px 500px, rgba(255, 220, 150, 0.28) 0, transparent 2.5px),
+        radial-gradient(circle at 1050px 220px, rgba(255, 220, 150, 0.24) 0, transparent 2.5px);
     background-size: 1340px 860px;
     background-attachment: fixed;
     animation: btl-lights-breathe 13s ease-in-out infinite reverse;
 }
 @keyframes btl-lights-breathe {
-    0%, 100% { opacity: 0.55; }
+    0%, 100% { opacity: 0.72; }
     50%      { opacity: 1; }
 }
 /* Content sits above the light field */
