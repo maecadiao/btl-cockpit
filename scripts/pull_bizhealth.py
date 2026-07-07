@@ -83,26 +83,13 @@ def qbo_series(months: list[str]) -> tuple[list[float] | None, list[float] | Non
 # ── GHL: new leads per month (contacts by dateAdded) ─────────────────────────
 
 def ghl_series(months: list[str]) -> tuple[list[float] | None, str | None]:
-    api_key, loc = env("GHL_API_KEY"), env("GHL_LOCATION_ID")
-    if not api_key or not loc:
+    if not env("GHL_API_KEY"):
         return None, "GoHighLevel: credentials not configured"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Version": "2021-04-15",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (compatible; BTL-Cockpit/1.0)",
-    }
     try:
-        rows, params = [], {"locationId": loc, "limit": 100}
-        for _ in range(10):  # up to 1000 newest contacts
-            url = "https://services.leadconnectorhq.com/contacts/?" + urllib.parse.urlencode(params)
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as r:
-                data = json.loads(r.read())
-            batch = data.get("contacts", [])
-            rows += [((c.get("dateAdded") or "")[:7], 1.0) for c in batch]
-            if len(batch) < 100 or not batch:
-                break
-            params = {"locationId": loc, "limit": 100, "startAfterId": batch[-1].get("id", "")}
+        import pull_ghl
+        pull_ghl.HEADERS["Authorization"] = f"Bearer {env('GHL_API_KEY')}"
+        contacts, _total = pull_ghl.fetch_all_contacts(cap=1000)
+        rows = [((c.get("dateAdded") or "")[:7], 1.0) for c in contacts]
         return _bucket(months, rows), None
     except urllib.error.HTTPError as e:
         return None, f"GoHighLevel: HTTP {e.code}"

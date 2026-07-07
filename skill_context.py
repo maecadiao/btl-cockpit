@@ -152,26 +152,14 @@ def _qbo_monthly_revenue(months: int = 25) -> tuple[str | None, str | None]:
 
 # ── GoHighLevel pipeline ──────────────────────────────────────────────────────
 
-def _ghl_get(path: str, params: dict) -> dict:
-    url = "https://services.leadconnectorhq.com" + path + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {_env('GHL_API_KEY')}",
-        "Version": "2021-07-28",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (compatible; BTL-Cockpit/1.0)",
-    })
-    with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as r:
-        return json.loads(r.read())
-
-
 def _ghl_pipeline() -> tuple[str | None, str | None]:
-    """Open opportunities by stage, plus stale + high-value callouts."""
-    if not _env("GHL_API_KEY") or not _env("GHL_LOCATION_ID"):
+    """Open opportunities by stage, plus stale + high-value callouts (v1 API)."""
+    if not _env("GHL_API_KEY"):
         return None, "GHL credentials not configured."
-    loc = _env("GHL_LOCATION_ID")
     try:
-        opp_r = _ghl_get("/opportunities/search/",
-                         {"location_id": loc, "limit": 100, "status": "open"})
+        import pull_ghl
+        pull_ghl.HEADERS["Authorization"] = f"Bearer {_env('GHL_API_KEY')}"
+        opps = pull_ghl.fetch_open_opportunities()
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             return None, ("GHL API key invalid/expired — regenerate in GHL Settings → "
@@ -179,8 +167,6 @@ def _ghl_pipeline() -> tuple[str | None, str | None]:
         return None, f"GHL pipeline fetch failed: HTTP {e.code}"
     except Exception as e:  # noqa: BLE001
         return None, f"GHL pipeline fetch failed: {str(e)[:120]}"
-
-    opps = opp_r.get("opportunities", [])
     if not opps:
         return "=== GHL OPEN PIPELINE — LIVE DATA ===\nNo open opportunities in the pipeline.\n", None
 
@@ -205,19 +191,23 @@ def _ghl_pipeline() -> tuple[str | None, str | None]:
         avg_age = sum(_age_days(o) for o in items) / len(items)
         lines.append(f"- {stage}: {len(items)} opportunities | ${total:,.0f} | avg {avg_age:.0f} days since last activity")
 
+    def _opp_name(o: dict) -> str:
+        return (o.get("name") or (o.get("contact") or {}).get("name")
+                or (o.get("contact") or {}).get("email") or "Unknown")
+
     stale = sorted((o for o in opps if _age_days(o) >= 10),
                    key=lambda o: -_age_days(o))[:10]
     if stale:
         lines.append("\nTOP STALE OPPORTUNITIES (10+ days no activity):")
         for o in stale:
-            lines.append(f"- {o.get('name', 'Unknown')} | {o.get('pipelineStageName', '?')} | "
+            lines.append(f"- {_opp_name(o)} | {o.get('pipelineStageName', '?')} | "
                          f"${float(o.get('monetaryValue') or 0):,.0f} | {_age_days(o)} days inactive")
 
     high_value = sorted(opps, key=lambda o: -float(o.get("monetaryValue") or 0))[:5]
     if high_value and float(high_value[0].get("monetaryValue") or 0) > 0:
         lines.append("\nHIGH-VALUE OPPORTUNITIES (top 5 by value):")
         for o in high_value:
-            lines.append(f"- {o.get('name', 'Unknown')} | {o.get('pipelineStageName', '?')} | "
+            lines.append(f"- {_opp_name(o)} | {o.get('pipelineStageName', '?')} | "
                          f"${float(o.get('monetaryValue') or 0):,.0f} | {_age_days(o)} days since last activity")
     return "\n".join(lines) + "\n", None
 

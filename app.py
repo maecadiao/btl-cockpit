@@ -3505,26 +3505,24 @@ def _fetch_ghl_inbox() -> str:
     import urllib.error
 
     api_key = _dotenv_get("GHL_API_KEY")
-    location_id = _dotenv_get("GHL_LOCATION_ID")
-    if not api_key or not location_id:
+    if not api_key:
         return ""
     try:
-        url = (
-            f"https://services.leadconnectorhq.com/contacts/"
-            f"?locationId={location_id}&limit=25&sortBy=date_added&sortDirection=desc"
-        )
+        # v1 API — location keys no longer work on v2 (see scripts/pull_ghl.py)
         req = urllib.request.Request(
-            url,
+            "https://rest.gohighlevel.com/v1/contacts/?limit=100",
             headers={
                 "Authorization": f"Bearer {api_key}",
-                "Version": "2021-07-28",
                 "Accept": "application/json",
-                "User-Agent": "BTLCockpit/1.0",
+                "User-Agent": "Mozilla/5.0 (compatible; BTL-Cockpit/1.0)",
             },
         )
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.loads(r.read().decode())
-        contacts = data.get("contacts", [])
+        contacts = sorted(
+            data.get("contacts", []),
+            key=lambda c: c.get("dateAdded") or "", reverse=True,
+        )[:25]
         if not contacts:
             return "GHL: No recent contacts found.\n"
         lines = [f"=== GHL RECENT CONTACTS ({len(contacts)} contacts, newest first) ==="]
