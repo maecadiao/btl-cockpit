@@ -68,20 +68,20 @@ def render_tasks_card(vault_path: Path) -> None:
     if changed:
         _write_tasks(vault_path, store)
 
-    c1, c2 = st.columns([5, 1], gap="small")
-    with c1:
-        new_text = st.text_input(
-            "new task", key="btl_task_new", placeholder="new task…",
-            label_visibility="collapsed",
-        )
-    with c2:
-        if st.button("＋", key="btl_task_add", use_container_width=True):
-            if new_text.strip():
-                next_id = max((t["id"] for t in tasks), default=0) + 1
-                tasks.append({"id": next_id, "text": new_text.strip(), "done": False})
-                _write_tasks(vault_path, store)
-                st.session_state.pop("btl_task_new", None)
-                st.rerun()
+    with st.form(key="btl_task_form", clear_on_submit=True, border=False):
+        c1, c2 = st.columns([5, 1], gap="small")
+        with c1:
+            new_text = st.text_input(
+                "new task", key="btl_task_new", placeholder="new task…",
+                label_visibility="collapsed",
+            )
+        with c2:
+            submitted = st.form_submit_button("＋", use_container_width=True)
+        if submitted and new_text.strip():
+            next_id = max((t["id"] for t in tasks), default=0) + 1
+            tasks.append({"id": next_id, "text": new_text.strip(), "done": False})
+            _write_tasks(vault_path, store)
+            st.rerun()
 
 
 # ── Date-range bar ────────────────────────────────────────────────────────────
