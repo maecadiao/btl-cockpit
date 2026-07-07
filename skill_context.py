@@ -95,9 +95,8 @@ def _metrics_block(vault_path: Path, sources: list[str]) -> tuple[str | None, st
 # ── QuickBooks ────────────────────────────────────────────────────────────────
 
 def _qbo_invoices(max_results: int = 1000) -> list[dict]:
-    from pull_qbo import current_refresh_token, get_access_token, qbo_query  # scripts/
-    token = get_access_token(_env("QBO_CLIENT_ID"), _env("QBO_CLIENT_SECRET"),
-                             current_refresh_token())
+    from pull_qbo import qbo_query, refresh_access_token_with_fallback  # scripts/
+    token = refresh_access_token_with_fallback(_env("QBO_CLIENT_ID"), _env("QBO_CLIENT_SECRET"))
     realm = _env("QBO_REALM_ID")
     year_ago = (date.today() - timedelta(days=730)).isoformat()
     r = qbo_query(realm, token,

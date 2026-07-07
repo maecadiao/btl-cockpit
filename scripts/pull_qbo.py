@@ -51,6 +51,22 @@ def current_refresh_token() -> str:
     return env("QBO_REFRESH_TOKEN") or ""
 
 
+def refresh_access_token_with_fallback(client_id: str, client_secret: str) -> str:
+    """Refresh using the store token; if that fails and the env seed differs
+    (i.e. a fresh token was just provisioned), retry with the seed and let the
+    rotation handler persist it to the store. Self-heals after re-auth."""
+    store_token = current_refresh_token()
+    try:
+        return get_access_token(client_id, client_secret, store_token)
+    except Exception:
+        seed = env("QBO_REFRESH_TOKEN") or ""
+        if seed and seed != store_token:
+            token = get_access_token(client_id, client_secret, seed)
+            _save_refresh_token(seed)  # store may still hold the dead one
+            return token
+        raise
+
+
 def get_access_token(client_id: str, client_secret: str, refresh_token: str) -> str:
     """Refresh QBO access token. Saves any new refresh_token Intuit returns so
     the next call doesn't fail due to token rotation."""
@@ -121,7 +137,7 @@ def main():
         return
 
     try:
-        token = get_access_token(client_id, client_secret, refresh_token)
+        token = refresh_access_token_with_fallback(client_id, client_secret)
     except Exception as e:
         write_snapshot(SOURCE, "error", f"token refresh failed: {str(e)[:160]}")
         return

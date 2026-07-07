@@ -51,9 +51,8 @@ def _bucket(months: list[str], rows: list[tuple[str, float]]) -> list[float]:
 
 def qbo_series(months: list[str]) -> tuple[list[float] | None, list[float] | None, str | None]:
     try:
-        from pull_qbo import current_refresh_token, get_access_token, qbo_query
-        token = get_access_token(env("QBO_CLIENT_ID"), env("QBO_CLIENT_SECRET"),
-                                 current_refresh_token())
+        from pull_qbo import qbo_query, refresh_access_token_with_fallback
+        token = refresh_access_token_with_fallback(env("QBO_CLIENT_ID"), env("QBO_CLIENT_SECRET"))
         realm = env("QBO_REALM_ID")
         start = f"{months[0]}-01"
 
