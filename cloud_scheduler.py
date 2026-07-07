@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 REFRESH_INTERVAL_SEC = 4 * 60 * 60  # matches the local runner's cadence
-PER_SCRIPT_TIMEOUT_SEC = 90
+PER_SCRIPT_TIMEOUT_SEC = 150  # bizhealth makes ~15 API calls
 
 _PROJECT_ROOT = Path(__file__).parent
 _SCRIPTS_DIR = _PROJECT_ROOT / "scripts"

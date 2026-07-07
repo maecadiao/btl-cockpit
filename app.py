@@ -5749,19 +5749,73 @@ with overview_tab:
                 # Daily tasks — team checklist, matches the Obsidian cockpit
                 render_tasks_card(VAULT_PATH)
         st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
-        if _show_thru:
-            # 30-day throughput chart — full width below the schedule/tasks row
+        # Business Health — monthly earnings / spending / leads / jobs.
+        # Replaces the old agent-runs chart (redundant with the runs card
+        # in the sidebar); data from system/metrics/business-health.json,
+        # refreshed by scripts/pull_bizhealth.py on the scheduler cadence.
+        _bh_path = VAULT_PATH / "system" / "metrics" / "business-health.json"
+        _bh = None
+        try:
+            _bh = json.loads(_bh_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pass
+        _bh_series = (_bh or {}).get("series", {})
+        st.markdown(
+            '<div class="v2-panel-head" style="margin-bottom:0.2rem">'
+            '<span>§ BUSINESS HEALTH · 12 MONTHS</span>'
+            f'<span class="v2-thru-meta">earnings · spending · leads · jobs</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        if _bh_series:
+            _bh_months = _bh.get("months", [])
+            _bh_labels = [datetime.strptime(m, "%Y-%m").strftime("%b %y") for m in _bh_months]
+            _fig = go.Figure()
+            if "earnings" in _bh_series:
+                _fig.add_bar(name="Earnings ($)", x=_bh_labels, y=_bh_series["earnings"],
+                             marker_color="rgba(242,181,68,0.85)")
+            if "spending" in _bh_series:
+                _fig.add_bar(name="Spending ($)", x=_bh_labels, y=_bh_series["spending"],
+                             marker_color="rgba(208,90,90,0.75)")
+            if "leads" in _bh_series:
+                _fig.add_scatter(name="New Leads", x=_bh_labels, y=_bh_series["leads"],
+                                 yaxis="y2", mode="lines+markers",
+                                 line=dict(color="#7ea6e0", width=2.2),
+                                 marker=dict(size=6))
+            if "jobs" in _bh_series:
+                _fig.add_scatter(name="Jobs", x=_bh_labels, y=_bh_series["jobs"],
+                                 yaxis="y2", mode="lines+markers",
+                                 line=dict(color="#86c290", width=2.2),
+                                 marker=dict(size=6))
+            _fig.update_layout(
+                height=300,
+                margin=dict(l=10, r=10, t=10, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="Outfit, sans-serif", size=11, color="#aeb8cc"),
+                barmode="group",
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+                xaxis=dict(gridcolor="rgba(168,190,225,0.08)"),
+                yaxis=dict(title="dollars", gridcolor="rgba(168,190,225,0.08)",
+                           tickprefix="$", separatethousands=True),
+                yaxis2=dict(title="count", overlaying="y", side="right",
+                            showgrid=False),
+            )
+            st.plotly_chart(_fig, use_container_width=True,
+                            config={"displayModeBar": False})
+            _bh_notes = (_bh or {}).get("notes", {})
+            if _bh_notes:
+                st.caption(" · ".join(sorted(set(_bh_notes.values()))))
+        else:
             st.markdown(
-                '<div class="v2-panel v2-thru-panel">'
-                '<div class="v2-panel-head">'
-                '<span>§ AGENT RUNS · 30D</span>'
-                f'<span class="v2-thru-meta">{_cum_total:,} total · {_cum_30d} last 30d</span>'
-                '</div>'
-                f'<div class="v2-thru-svg">{_build_activity_svg(df_cum)}</div>'
-                '</div>',
+                '<div class="v2-panel" style="padding:1.2rem">'
+                '<span style="color:var(--fg-mute)">Business health data will appear here '
+                'once the QuickBooks, GoHighLevel, and Jobber connections are renewed — '
+                'monthly earnings, spending, new leads, and jobs.</span></div>',
                 unsafe_allow_html=True,
             )
-            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
     col_main, col_side = st.columns([2.6, 1], gap="large")
 
