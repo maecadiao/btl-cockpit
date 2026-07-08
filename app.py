@@ -1540,6 +1540,15 @@ hr.chapter::after { content: none; }
     font-size: 0.76rem !important;
     text-align: center !important;
 }
+/* Selected range pill — the global button CSS flattens primary + secondary
+   to the same navy, so the active range was invisible. Make it glow amber. */
+[data-testid="stHorizontalBlock"]:has(.btl-range-marker) button[kind="primary"],
+[data-testid="stHorizontalBlock"]:has(.btl-range-marker) [data-testid="stBaseButton-primary"] {
+    background: rgba(242, 181, 68, 0.16) !important;
+    color: #f8dfae !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 0 1px var(--accent), 0 0 14px rgba(242, 181, 68, 0.28) !important;
+}
 [data-testid="stHorizontalBlock"]:has(.btl-range-marker) [data-testid="stDateInput"] input {
     font-size: 0.74rem !important;
     padding: 0.3rem 0.5rem !important;
