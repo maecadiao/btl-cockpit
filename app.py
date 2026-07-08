@@ -5511,7 +5511,7 @@ from overview_widgets import (
 )
 
 with overview_tab:
-    _range_start, _range_end = render_range_bar()
+    _range_start, _range_end, _range_label = render_range_bar()
     if _enabled_cards.get("tokenburn", True):
         st.markdown(
             render_tokenburn_meter(
@@ -5523,9 +5523,12 @@ with overview_tab:
             unsafe_allow_html=True,
         )
     st.markdown('<div class="cpt-cat">business at a glance</div>', unsafe_allow_html=True)
+    _snaps = metric_snapshots(VAULT_PATH, OVERVIEW_CARDS, _range_start, _range_end)
+    _hist_start = _snaps.get("__history_start__")
     render_metric_cards(
-        OVERVIEW_CARDS,
-        metric_snapshots(VAULT_PATH, OVERVIEW_CARDS, _range_start, _range_end),
+        OVERVIEW_CARDS, _snaps,
+        range_label=_range_label,
+        history_start=_hist_start.strftime("%b %d") if _hist_start else "",
     )
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
@@ -5767,6 +5770,15 @@ with overview_tab:
         )
         if _bh_series:
             _bh_months = _bh.get("months", [])
+            # Zoom the monthly chart with the selected range
+            _bh_keep = {"today": 3, "7d": 3, "30d": 6, "90d": 9, "all": 12}.get(
+                st.session_state.get("btl_range", "30d"), 12)
+            if _range_start and st.session_state.get("btl_range_from"):
+                _bh_keep = max(3, sum(1 for m in _bh_months
+                                      if m >= _range_start.strftime("%Y-%m")))
+            _keep_n = min(len(_bh_months), _bh_keep)
+            _bh_months = _bh_months[-_keep_n:]
+            _bh_series = {k: v[-_keep_n:] for k, v in _bh_series.items()}
             _bh_labels = [datetime.strptime(m, "%Y-%m").strftime("%b %y") for m in _bh_months]
             _fig = go.Figure()
             if "earnings" in _bh_series:

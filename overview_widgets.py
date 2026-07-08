@@ -120,14 +120,15 @@ def render_range_bar() -> tuple[datetime | None, datetime | None]:
         start = datetime(d_from.year, d_from.month, d_from.day, tzinfo=timezone.utc)
         end = (datetime(d_to.year, d_to.month, d_to.day, 23, 59, 59, tzinfo=timezone.utc)
                if d_to else None)
-        return start, end
+        return start, end, f"since {d_from.strftime('%b %d')}"
     sel = st.session_state.btl_range
     if sel == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0), None
+        return (now.replace(hour=0, minute=0, second=0, microsecond=0), None,
+                "since this morning")
     if sel == "all":
-        return None, None
+        return None, None, "all time"
     days = {"7d": 7, "30d": 30, "90d": 90}[sel]
-    return now - timedelta(days=days), None
+    return now - timedelta(days=days), None, f"vs {days} days ago"
 
 
 # ── Metric cards ──────────────────────────────────────────────────────────────
@@ -184,7 +185,10 @@ def metric_snapshots(vault_path: Path, cards: list[dict],
     except (OSError, json.JSONDecodeError):
         pass
 
-    out: dict = {}
+    out: dict = {"__history_start__": None}
+    all_ts = [p[0] for pts in series.values() for p in pts]
+    if all_ts:
+        out["__history_start__"] = min(all_ts)
     now = datetime.now(timezone.utc)
     for key, points in series.items():
         if not points:
@@ -196,11 +200,14 @@ def metric_snapshots(vault_path: Path, cards: list[dict],
         baseline = None
         if start:
             before = [p for p in points if p[0] < start]
-            within = [p for p in points if p[0] >= start and (end is None or p[0] <= end)]
-            baseline = before[-1][1] if before else (within[0][1] if within else None)
+            # Only a point that predates the range start is a real comparison;
+            # falling back to the earliest in-range point fakes a 0.0% delta.
+            baseline = before[-1][1] if before else None
+        elif len(points) > 1:
+            baseline = points[0][1]   # "all time": compare against first record
         delta_pct = (
             (latest_v - baseline) / abs(baseline) * 100
-            if baseline not in (None, 0) else (0.0 if baseline == 0 and latest_v == 0 else None)
+            if baseline not in (None, 0) else None
         )
         src_status = (status.get(key[0]) or {}).get("status", "")
         age_h = (now - latest_ts).total_seconds() / 3600
@@ -216,7 +223,8 @@ def metric_snapshots(vault_path: Path, cards: list[dict],
     return out
 
 
-def render_metric_cards(cards: list[dict], snaps: dict) -> None:
+def render_metric_cards(cards: list[dict], snaps: dict,
+                        range_label: str = "", history_start: str = "") -> None:
     tiles = []
     for c in cards:
         s = snaps.get((c["source"], c["metric"]))
@@ -231,13 +239,15 @@ def render_metric_cards(cards: list[dict], snaps: dict) -> None:
             continue
         dp = s["delta_pct"]
         if dp is None:
-            delta_html = '<span class="btl-mc-delta flat">·&nbsp;—</span>'
+            note = (f"collecting history — started {history_start}"
+                    if history_start else "collecting history…")
+            delta_html = f'<span class="btl-mc-delta flat">{note}</span>'
         elif abs(dp) < 0.05:
-            delta_html = '<span class="btl-mc-delta flat">·&nbsp;0.0%</span>'
+            delta_html = f'<span class="btl-mc-delta flat">·&nbsp;unchanged {range_label}</span>'
         elif dp > 0:
-            delta_html = f'<span class="btl-mc-delta up">▲&nbsp;{dp:.1f}%</span>'
+            delta_html = f'<span class="btl-mc-delta up">▲&nbsp;{dp:.1f}% {range_label}</span>'
         else:
-            delta_html = f'<span class="btl-mc-delta down">▼&nbsp;{abs(dp):.1f}%</span>'
+            delta_html = f'<span class="btl-mc-delta down">▼&nbsp;{abs(dp):.1f}% {range_label}</span>'
         tiles.append(
             f'<div class="btl-mc"><div class="btl-mc-head">'
             f'<span class="btl-mc-label">{c["label"]}</span>'
