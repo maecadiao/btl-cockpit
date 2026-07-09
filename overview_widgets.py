@@ -133,13 +133,15 @@ def render_range_bar() -> tuple[datetime | None, datetime | None]:
 
 # ── Metric cards ──────────────────────────────────────────────────────────────
 
-# Plain-English labels — the team shouldn't need to know accounting acronyms.
+# Plain-English labels. "snapshot" = a live "right now" value (range can't change
+# it); "range" = a total summed over the selected window, from daily-series.json.
 OVERVIEW_CARDS = [
-    {"source": "qbo",    "metric": "ar_balance",   "label": "Money Owed to Us",   "format": "currency"},
-    {"source": "qbo",    "metric": "revenue_mtd",  "label": "Revenue This Month", "format": "currency"},
-    {"source": "ghl",    "metric": "active_leads", "label": "Active Leads",       "format": "integer"},
-    {"source": "jobber", "metric": "jobs_today",   "label": "Jobs Today",         "format": "integer"},
-    {"source": "ghl",    "metric": "inbox_unread", "label": "Unread Messages",    "format": "integer"},
+    {"mode": "snapshot", "source": "qbo", "metric": "ar_balance",
+     "label": "Money Owed to Us", "format": "currency"},
+    {"mode": "range", "series": "revenue",  "label": "Revenue",   "format": "currency"},
+    {"mode": "range", "series": "spending", "label": "Spending",  "format": "currency"},
+    {"mode": "range", "series": "leads",    "label": "New Leads", "format": "integer"},
+    {"mode": "range", "series": "jobs",     "label": "Jobs",      "format": "integer"},
 ]
 
 
@@ -223,36 +225,103 @@ def metric_snapshots(vault_path: Path, cards: list[dict],
     return out
 
 
-def render_metric_cards(cards: list[dict], snaps: dict,
-                        range_label: str = "", history_start: str = "") -> None:
-    tiles = []
+def _read_daily_series(vault_path: Path) -> dict:
+    try:
+        return json.loads(
+            (vault_path / "system" / "metrics" / "daily-series.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _range_total(daily: dict, series_name: str,
+                 start: datetime | None, end: datetime | None):
+    """Sum a daily series over [start, end], plus the immediately-preceding
+    equal-length window for a %delta. Returns (total, delta_pct|None, fresh)."""
+    days = daily.get("days", [])
+    values = daily.get("series", {}).get(series_name)
+    if not days or values is None:
+        return None, None, False
+    day_to_val = dict(zip(days, values))
+    end_d = (end.date() if end else date.today())
+    start_d = (start.date() if start else date.fromisoformat(days[0]))
+
+    win = [d for d in days if start_d <= date.fromisoformat(d) <= end_d]
+    total = sum(day_to_val[d] for d in win)
+
+    delta_pct = None
+    if win:
+        span = (date.fromisoformat(win[-1]) - date.fromisoformat(win[0])).days + 1
+        prev_end = date.fromisoformat(win[0]) - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=span - 1)
+        prev = [d for d in days
+                if prev_start <= date.fromisoformat(d) <= prev_end]
+        if prev:
+            prev_total = sum(day_to_val[d] for d in prev)
+            if prev_total:
+                delta_pct = (total - prev_total) / abs(prev_total) * 100
+    fresh = series_name not in daily.get("notes", {})
+    return total, delta_pct, fresh
+
+
+def compute_overview(vault_path: Path, cards: list[dict],
+                     start: datetime | None, end: datetime | None) -> list[dict]:
+    """Resolve each card to {label, value, format, delta_pct, dot, ok} for rendering."""
+    snap_cards = [c for c in cards if c.get("mode") == "snapshot"]
+    snaps = metric_snapshots(vault_path, snap_cards, start, end) if snap_cards else {}
+    daily = _read_daily_series(vault_path)
+
+    out = []
     for c in cards:
-        s = snaps.get((c["source"], c["metric"]))
-        if s is None:
+        if c.get("mode") == "range":
+            total, dp, fresh = _range_total(daily, c["series"], start, end)
+            out.append({
+                "label": c["label"], "format": c["format"],
+                "value": total, "delta_pct": dp,
+                "dot": ("ok" if fresh else "stale") if total is not None else "none",
+                "ok": total is not None,
+            })
+        else:
+            s = snaps.get((c["source"], c["metric"]))
+            out.append({
+                "label": c["label"], "format": c["format"],
+                "value": (s or {}).get("value"),
+                "delta_pct": None,  # AR is a live balance — no window comparison
+                "dot": (s or {}).get("dot", "none"),
+                "ok": s is not None,
+                "snapshot": True,
+            })
+    return out
+
+
+def render_metric_cards(computed: list[dict], range_label: str = "") -> None:
+    tiles = []
+    for c in computed:
+        if not c["ok"] or c["value"] is None:
+            delta = ('<span class="btl-mc-delta flat">connect to see</span>')
             tiles.append(
                 f'<div class="btl-mc"><div class="btl-mc-head">'
                 f'<span class="btl-mc-label">{c["label"]}</span>'
                 f'<span class="btl-mc-dot none"></span></div>'
-                f'<div class="btl-mc-value">—</div>'
-                f'<div class="btl-mc-delta flat">no data</div></div>'
+                f'<div class="btl-mc-value">—</div>{delta}</div>'
             )
             continue
-        dp = s["delta_pct"]
-        if dp is None:
-            note = (f"collecting history — started {history_start}"
-                    if history_start else "collecting history…")
-            delta_html = f'<span class="btl-mc-delta flat">{note}</span>'
-        elif abs(dp) < 0.05:
-            delta_html = f'<span class="btl-mc-delta flat">·&nbsp;unchanged {range_label}</span>'
-        elif dp > 0:
-            delta_html = f'<span class="btl-mc-delta up">▲&nbsp;{dp:.1f}% {range_label}</span>'
+        if c.get("snapshot"):
+            delta_html = '<span class="btl-mc-delta flat">as of now</span>'
         else:
-            delta_html = f'<span class="btl-mc-delta down">▼&nbsp;{abs(dp):.1f}% {range_label}</span>'
+            dp = c["delta_pct"]
+            if dp is None:
+                delta_html = f'<span class="btl-mc-delta flat">{range_label}</span>'
+            elif abs(dp) < 0.05:
+                delta_html = f'<span class="btl-mc-delta flat">·&nbsp;flat vs prior period</span>'
+            elif dp > 0:
+                delta_html = f'<span class="btl-mc-delta up">▲&nbsp;{dp:.0f}% vs prior period</span>'
+            else:
+                delta_html = f'<span class="btl-mc-delta down">▼&nbsp;{abs(dp):.0f}% vs prior period</span>'
         tiles.append(
             f'<div class="btl-mc"><div class="btl-mc-head">'
             f'<span class="btl-mc-label">{c["label"]}</span>'
-            f'<span class="btl-mc-dot {s["dot"]}"></span></div>'
-            f'<div class="btl-mc-value">{_fmt_value(s["value"], c["format"])}</div>'
+            f'<span class="btl-mc-dot {c["dot"]}"></span></div>'
+            f'<div class="btl-mc-value">{_fmt_value(c["value"], c["format"])}</div>'
             f'{delta_html}</div>'
         )
     st.markdown(f'<div class="btl-mc-grid">{"".join(tiles)}</div>', unsafe_allow_html=True)

@@ -5515,7 +5515,7 @@ overview_tab, ghl_tab, jobber_tab, social_tab, qbo_tab, admin_tab, skills_tab = 
 ])
 
 from overview_widgets import (
-    OVERVIEW_CARDS, metric_snapshots, render_metric_cards,
+    OVERVIEW_CARDS, compute_overview, render_metric_cards,
     render_range_bar, render_tasks_card,
 )
 
@@ -5531,13 +5531,15 @@ with overview_tab:
             ),
             unsafe_allow_html=True,
         )
-    st.markdown('<div class="cpt-cat">business at a glance</div>', unsafe_allow_html=True)
-    _snaps = metric_snapshots(VAULT_PATH, OVERVIEW_CARDS, _range_start, _range_end)
-    _hist_start = _snaps.get("__history_start__")
+    st.markdown(
+        f'<div class="cpt-cat">business at a glance '
+        f'<span style="color:var(--fg-mute);text-transform:none;letter-spacing:0.02em">'
+        f'· {_range_label}</span></div>',
+        unsafe_allow_html=True,
+    )
     render_metric_cards(
-        OVERVIEW_CARDS, _snaps,
+        compute_overview(VAULT_PATH, OVERVIEW_CARDS, _range_start, _range_end),
         range_label=_range_label,
-        history_start=_hist_start.strftime("%b %d") if _hist_start else "",
     )
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
