@@ -88,7 +88,7 @@ def ghl_series(months: list[str]) -> tuple[list[float] | None, str | None]:
     try:
         import pull_ghl
         pull_ghl.HEADERS["Authorization"] = f"Bearer {env('GHL_API_KEY')}"
-        contacts, _total = pull_ghl.fetch_all_contacts(cap=1000)
+        contacts, _total = pull_ghl.fetch_all_contacts(cap=700)
         rows = [((c.get("dateAdded") or "")[:7], 1.0) for c in contacts]
         return _bucket(months, rows), None
     except urllib.error.HTTPError as e:

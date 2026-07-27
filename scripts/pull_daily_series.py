@@ -28,8 +28,8 @@ from _common import VAULT_METRICS, env, now_iso, write_snapshot
 
 OUT_PATH = VAULT_METRICS / "daily-series.json"
 N_DAYS = 365
-GHL_CONTACT_CAP = 2000   # ~20 pages; covers well over a year of BTL lead volume
-JOBBER_PAGE_CAP = 8      # 100 jobs/page
+GHL_CONTACT_CAP = 700    # keep peak memory low so the container doesn't OOM at boot
+JOBBER_PAGE_CAP = 5      # 100 jobs/page
 
 
 def _days() -> list[str]:

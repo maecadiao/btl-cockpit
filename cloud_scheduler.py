@@ -23,6 +23,12 @@ from pathlib import Path
 
 REFRESH_INTERVAL_SEC = 4 * 60 * 60  # matches the local runner's cadence
 PER_SCRIPT_TIMEOUT_SEC = 150  # bizhealth makes ~15 API calls
+# Don't run the heavy pull cycle the instant we boot — that memory spike,
+# concurrent with Streamlit starting, was OOM-killing the container into a
+# crash loop. Let the app come up, pass healthcheck, and serve the data
+# already on the volume first; pull a couple minutes later when it's stable.
+STARTUP_DELAY_SEC = 150
+INTER_PULL_GAP_SEC = 4  # let each pull's memory free before the next spawns
 
 _PROJECT_ROOT = Path(__file__).parent
 _SCRIPTS_DIR = _PROJECT_ROOT / "scripts"
@@ -48,9 +54,11 @@ def _run_one(script_path: Path, vault_path: Path) -> None:
 def _run_all(vault_path: Path) -> None:
     for script_path in sorted(_SCRIPTS_DIR.glob("pull_*.py")):
         _run_one(script_path, vault_path)
+        time.sleep(INTER_PULL_GAP_SEC)
 
 
 def _loop(vault_path: Path) -> None:
+    time.sleep(STARTUP_DELAY_SEC)   # boot clean before the first heavy pull cycle
     while True:
         _run_all(vault_path)
         time.sleep(REFRESH_INTERVAL_SEC)
