@@ -1560,6 +1560,23 @@ hr.chapter::after { content: none; }
     }
 }
 
+/* Sign-in pill in the quicknav */
+.quicknav a.qn-auth {
+    color: var(--fg-dim);
+    letter-spacing: 0.02em;
+}
+.quicknav a.qn-signin {
+    color: #f8dfae !important;
+    background: rgba(242, 181, 68, 0.08);
+    box-shadow: 0 0 0 1px rgba(242, 181, 68, 0.5);
+}
+.quicknav a.qn-signin:hover {
+    background: rgba(242, 181, 68, 0.14);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+.quicknav a.qn-signedin { color: #86c290 !important; }
+.quicknav a.qn-signedin:hover { color: #d05a5a !important; box-shadow: 0 0 0 1px rgba(208,90,90,0.5); }
+
 /* Reveal body after PREMIUM_CSS parses — overrides pre-hide from earlier inline style. */
 body { opacity: 1; transition: opacity 0.18s ease-out; }
 </style>
@@ -3684,7 +3701,11 @@ def _run_skill_bg(prompt: str):
     """Subprocess runner (runs in background thread). Populates RT."""
     # Pre-fetch live inbox data for data-dependent skills
     enriched_prompt = prompt
-    if "inbox-monitor-digest" in prompt:
+    # If the caller already injected the member's own inbox on the main thread
+    # (per-member Gmail sign-in), don't re-fetch a shared mailbox here.
+    if "inbox-monitor-digest" in prompt and "=== LIVE INBOX DATA" in prompt:
+        pass
+    elif "inbox-monitor-digest" in prompt:
         ghl_data = _fetch_ghl_inbox()
         gmail_data = _fetch_gmail_unread()
         # Real data starts with "===" (header lines). Error/status strings don't.
@@ -3870,9 +3891,29 @@ for k, v in defaults.items():
 
 st.markdown('<div class="cpt-header-marker"></div>', unsafe_allow_html=True)
 
+# ── Per-member Google sign-in: OAuth callback → session ────────────────────────
+import gmail_auth
+if "code" in st.query_params and "state" in st.query_params:
+    _email, _auth_err = gmail_auth.handle_callback(
+        st.query_params.get("code"), st.query_params.get("state"))
+    if _email:
+        st.session_state["member_email"] = _email
+        st.session_state.pop("auth_error", None)
+    else:
+        st.session_state["auth_error"] = _auth_err
+    st.query_params.clear()
+    st.rerun()
+
+CURRENT_MEMBER = st.session_state.get("member_email")
+
 # Quicknav query-param actions: terminal launch + metrics-pull queue
 _action_q = st.query_params.get("action")
-if _action_q == "terminal":
+if _action_q == "signout":
+    st.session_state.pop("member_email", None)
+    CURRENT_MEMBER = None
+    st.query_params.clear()
+    st.rerun()
+elif _action_q == "terminal":
     try:
         open_claude_terminal()
         st.toast("Terminal opened at vault.", icon="✅")
@@ -4047,6 +4088,19 @@ else:
         '<span class="pulse-dot idle small"></span>idle</div>'
     )
 
+if CURRENT_MEMBER:
+    _auth_html = (
+        f'<a href="?action=signout" target="_self" class="qn-auth qn-signedin" '
+        f'title="Sign out">◉ {html_escape(CURRENT_MEMBER)}</a>'
+    )
+elif gmail_auth.is_configured():
+    _auth_html = (
+        f'<a href="{html_escape(gmail_auth.auth_url())}" target="_self" '
+        f'class="qn-auth qn-signin">Sign in with Google</a>'
+    )
+else:
+    _auth_html = ""
+
 st.markdown(
     f"""
     <div class="quicknav">
@@ -4057,11 +4111,14 @@ st.markdown(
         <a href="{runs_folder_uri}" target="_self"><span class="qn-icon">¶</span>runs folder</a>
         <a href="{drafts_folder_uri}" target="_self"><span class="qn-icon">※</span>drafts</a>
         <a class="qn-pull" href="?action=pull-latest" target="_self" title="Queue /metrics-pull skill"><span class="qn-icon">↻</span>pull</a>
+        {_auth_html}
         {_status_html}
     </div>
     """,
     unsafe_allow_html=True,
 )
+if st.session_state.get("auth_error"):
+    st.warning(st.session_state.pop("auth_error"))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -5683,8 +5740,37 @@ _BTL_SKILL_MAP = {s["label"]: s for s in SKILLS}
 
 def _btl_quick_run(label: str):
     skill = _BTL_SKILL_MAP.get(label)
-    if skill:
-        start_skill_run(label, skill["prompt_template"])
+    if not skill:
+        return
+    prompt = skill["prompt_template"]
+    if label == "Inbox Digest":
+        member = st.session_state.get("member_email")
+        if not member:
+            st.session_state["inbox_needs_signin"] = True
+            return
+        # Main-thread enrichment: the signed-in member's OWN unread Gmail +
+        # shared GHL contacts. Injecting "=== LIVE INBOX DATA" here tells the
+        # background runner not to fetch a shared mailbox.
+        gmail_block, gmail_note = gmail_auth.unread_block(member)
+        ghl_data = _fetch_ghl_inbox()
+        real_parts, status_parts = [], []
+        if gmail_block:
+            real_parts.append(gmail_block)
+        elif gmail_note:
+            status_parts.append(gmail_note)
+        if ghl_data:
+            (real_parts if ghl_data.strip().startswith("===") else status_parts).append(
+                ghl_data.strip())
+        sections = []
+        if real_parts:
+            sections.append(f"=== LIVE INBOX DATA (fetched just now for {member}) ===\n"
+                            + "".join(real_parts))
+        if status_parts:
+            sections.append("=== FETCH STATUS ===\n" + "\n".join(status_parts))
+        if not sections:
+            sections.append("=== FETCH STATUS ===\nNo inbox sources returned data.")
+        prompt = prompt + "\n\n" + "\n\n".join(sections).strip()
+    start_skill_run(label, prompt)
 
 with overview_tab:
     _qa_cols = st.columns(len(_BTL_QUICK), gap="small")
@@ -5700,6 +5786,12 @@ with overview_tab:
                 args=(_ql,),
                 help=_BTL_SKILL_MAP.get(_ql, {}).get("description", ""),
             )
+    if st.session_state.pop("inbox_needs_signin", False):
+        if gmail_auth.is_configured():
+            st.info("Inbox Digest reads *your own* Gmail — click **Sign in with Google** "
+                    "in the top bar to connect your inbox, then run it again.")
+        else:
+            st.warning("Gmail sign-in isn't configured yet.")
     st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
 
 # (tabs are created above, before the token-burn meter)
