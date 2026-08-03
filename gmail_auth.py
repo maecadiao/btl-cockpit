@@ -22,6 +22,8 @@ import hmac
 import json
 import os
 import time
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 # oauthlib complains when Google returns scopes in a different order / adds
@@ -29,11 +31,15 @@ from pathlib import Path
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 ALLOWED_DOMAIN = "bethelightdecor.com"   # Internal app already enforces this; belt + suspenders
+# One Google connection per member. Read-only scopes for what the cockpit uses;
+# add more here as features need them (each new scope re-prompts once).
 SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/calendar.readonly",
 ]
+BTL_TZ = ZoneInfo("America/Chicago")
 _AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 _TOKEN_URI = "https://oauth2.googleapis.com/token"
 SESSION_TTL_SEC = 14 * 24 * 3600   # stay signed in for two weeks
@@ -246,23 +252,30 @@ def _email_from_creds(creds) -> str | None:
 
 # ── read-only Gmail fetch ─────────────────────────────────────────────────────
 
-def fetch_unread(email: str, max_results: int = 15) -> tuple[list[dict], str | None]:
-    """Return (messages, error) for the member's unread inbox. Read-only."""
+def _member_creds(email: str):
+    """Refreshed Google credentials for a connected member, or None."""
     rt = get_refresh_token(email)
     if not rt:
+        return None
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    creds = Credentials(
+        token=None, refresh_token=rt,
+        client_id=_env("GOOGLE_OAUTH_CLIENT_ID"),
+        client_secret=_env("GOOGLE_OAUTH_CLIENT_SECRET"),
+        token_uri=_TOKEN_URI, scopes=SCOPES,
+    )
+    creds.refresh(Request())
+    return creds
+
+
+def fetch_unread(email: str, max_results: int = 15) -> tuple[list[dict], str | None]:
+    """Return (messages, error) for the member's unread inbox. Read-only."""
+    if not get_refresh_token(email):
         return [], "not connected"
     try:
-        from google.auth.transport.requests import Request
-        from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
-
-        creds = Credentials(
-            token=None, refresh_token=rt,
-            client_id=_env("GOOGLE_OAUTH_CLIENT_ID"),
-            client_secret=_env("GOOGLE_OAUTH_CLIENT_SECRET"),
-            token_uri=_TOKEN_URI, scopes=SCOPES,
-        )
-        creds.refresh(Request())
+        creds = _member_creds(email)
         service = build("gmail", "v1", credentials=creds, cache_discovery=False)
         listing = service.users().messages().list(
             userId="me", q="is:unread in:inbox", maxResults=max_results).execute()
@@ -300,3 +313,42 @@ def unread_block(email: str) -> tuple[str | None, str | None]:
         if m["snippet"]:
             lines.append(f"  Preview: {m['snippet']}")
     return "\n".join(lines) + "\n", None
+
+
+# ── read-only Calendar fetch ──────────────────────────────────────────────────
+
+def fetch_today_events(email: str) -> tuple[list[dict], str | None]:
+    """Return (events, error) for the member's own calendar today. Read-only.
+    Each event: {'time': '9:00 AM' | 'all-day', 'label': summary}."""
+    if not get_refresh_token(email):
+        return [], "not connected"
+    try:
+        from googleapiclient.discovery import build
+        creds = _member_creds(email)
+        service = build("calendar", "v3", credentials=creds, cache_discovery=False)
+
+        now_local = datetime.now(BTL_TZ)
+        day_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        res = service.events().list(
+            calendarId="primary",
+            timeMin=day_start.astimezone(timezone.utc).isoformat(),
+            timeMax=day_end.astimezone(timezone.utc).isoformat(),
+            singleEvents=True, orderBy="startTime", maxResults=20,
+        ).execute()
+
+        out = []
+        for e in res.get("items", []):
+            start = e.get("start", {})
+            if start.get("dateTime"):
+                try:
+                    t = datetime.fromisoformat(start["dateTime"]).astimezone(BTL_TZ)
+                    label_time = t.strftime("%I:%M %p").lstrip("0")
+                except ValueError:
+                    label_time = ""
+            else:
+                label_time = "all-day"
+            out.append({"time": label_time, "label": e.get("summary", "(no title)")})
+        return out, None
+    except Exception as e:  # noqa: BLE001
+        return [], f"Calendar fetch failed: {str(e)[:140]}"

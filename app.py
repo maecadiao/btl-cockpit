@@ -5844,7 +5844,15 @@ with overview_tab:
         _sd_cols = st.columns(2, gap="small")
         with _sd_cols[0]:
             if _show_sched:
-                _sched_events = _daily["schedule"] or read_calendar_events()
+                # Signed-in member → their OWN Google Calendar; otherwise the
+                # daily-note schedule or the shared calendar fallback.
+                _sched_events = None
+                if CURRENT_MEMBER and gmail_auth.is_connected(CURRENT_MEMBER):
+                    _ev, _cal_err = gmail_auth.fetch_today_events(CURRENT_MEMBER)
+                    if not _cal_err:
+                        _sched_events = _ev
+                if _sched_events is None:
+                    _sched_events = _daily["schedule"] or read_calendar_events()
                 st.markdown(render_schedule_panel(_sched_events), unsafe_allow_html=True)
         with _sd_cols[1]:
             if _show_drv:
