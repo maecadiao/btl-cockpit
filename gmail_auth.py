@@ -203,13 +203,18 @@ def auth_url() -> str:
 
 def handle_callback(code: str, state: str) -> tuple[str | None, str | None]:
     """Exchange the code. Returns (email, error). Stores the refresh token."""
+    import sys
     if not check_state(state):
+        print(f"[gmail_auth] callback: STATE CHECK FAILED (state={(state or '')[:24]}...)",
+              file=sys.stderr, flush=True)
         return None, "Sign-in expired or invalid — please try again."
     try:
         flow = _flow(state=state)
         flow.fetch_token(code=code)
         creds = flow.credentials
         email = _email_from_creds(creds)
+        print(f"[gmail_auth] callback: token OK, email={email}, "
+              f"has_refresh={bool(creds.refresh_token)}", file=sys.stderr, flush=True)
         if not email:
             return None, "Could not read your email from Google."
         if not email.lower().endswith("@" + ALLOWED_DOMAIN):
@@ -221,7 +226,10 @@ def handle_callback(code: str, state: str) -> tuple[str | None, str | None]:
                           "from your Google account's connected apps, then sign in again.")
         return email, None
     except Exception as e:  # noqa: BLE001
-        return None, f"Sign-in failed: {str(e)[:160]}"
+        import traceback
+        print("[gmail_auth] callback EXCEPTION:\n" + traceback.format_exc(),
+              file=sys.stderr, flush=True)
+        return None, f"Sign-in failed: {str(e)[:200]}"
 
 
 def _email_from_creds(creds) -> str | None:
