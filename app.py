@@ -1560,6 +1560,62 @@ hr.chapter::after { content: none; }
     }
 }
 
+/* Full-screen login gate */
+.btl-login {
+    max-width: 420px;
+    margin: 14vh auto 0;
+    text-align: center;
+    padding: 2rem 1.5rem;
+}
+.btl-login-brand {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 2rem;
+    color: var(--fg);
+    letter-spacing: 0.01em;
+}
+.btl-login-brand em { font-style: italic; color: var(--accent); text-shadow: 0 0 30px rgba(242,181,68,0.35); }
+.btl-login-sub {
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    margin: 0.5rem 0 2rem;
+}
+.btl-login-btn {
+    display: inline-block;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #f8dfae !important;
+    text-decoration: none !important;
+    padding: 0.7rem 1.6rem;
+    border-radius: 12px;
+    background: rgba(242, 181, 68, 0.10);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 22px rgba(242, 181, 68, 0.18);
+    transition: background 0.15s, box-shadow 0.15s;
+}
+.btl-login-btn:hover {
+    background: rgba(242, 181, 68, 0.18);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 30px rgba(242, 181, 68, 0.3);
+}
+.btl-login-note {
+    margin-top: 1rem;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.75rem;
+    color: var(--fg-mute);
+}
+.btl-login-err {
+    margin-top: 1.2rem;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.8rem;
+    color: #e08a6a;
+    background: rgba(208, 90, 90, 0.08);
+    box-shadow: 0 0 0 1px rgba(208, 90, 90, 0.3);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+}
+
 /* Sign-in pill in the quicknav */
 .quicknav a.qn-auth {
     color: var(--fg-dim);
@@ -3842,6 +3898,96 @@ def finalize_run_if_done(label: str, prompt: str):
 
 
 # ═══════════════════════════════════════════════════════════
+# AUTH GATE — per-member Google sign-in
+#   Resolves the current member from the session or a persistent cookie,
+#   handles the OAuth callback, and (when BTL_REQUIRE_LOGIN is set) locks
+#   the whole app behind a company Google login. Fails OPEN if sign-in is
+#   not configured, so a misconfig can never lock the team out.
+# ═══════════════════════════════════════════════════════════
+import gmail_auth
+
+_cookie_mgr = None
+try:
+    import extra_streamlit_components as stx
+    _cookie_mgr = stx.CookieManager(key="btl_auth_cookie")
+except Exception:  # noqa: BLE001 — degrade to session-only (re-login per refresh)
+    _cookie_mgr = None
+
+
+def _read_session_cookie() -> str | None:
+    if not _cookie_mgr:
+        return None
+    try:
+        return gmail_auth.read_session_token(_cookie_mgr.get("btl_session") or "")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _write_session_cookie(email: str) -> None:
+    if not _cookie_mgr:
+        return
+    try:
+        _cookie_mgr.set(
+            "btl_session", gmail_auth.make_session_token(email),
+            expires_at=datetime.now() + timedelta(days=14), key="btl_sess_set")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _delete_session_cookie() -> None:
+    if not _cookie_mgr:
+        return
+    try:
+        _cookie_mgr.delete("btl_session", key="btl_sess_del")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# OAuth callback → establish session + persistent cookie
+if "code" in st.query_params and "state" in st.query_params:
+    _email, _auth_err = gmail_auth.handle_callback(
+        st.query_params.get("code"), st.query_params.get("state"))
+    if _email:
+        st.session_state["member_email"] = _email
+        st.session_state.pop("auth_error", None)
+        _write_session_cookie(_email)
+    else:
+        st.session_state["auth_error"] = _auth_err
+    st.query_params.clear()
+    st.rerun()
+
+# Resolve current member: session first, then the persistent cookie
+CURRENT_MEMBER = st.session_state.get("member_email")
+if not CURRENT_MEMBER:
+    _ck_email = _read_session_cookie()
+    if _ck_email:
+        CURRENT_MEMBER = _ck_email
+        st.session_state["member_email"] = _ck_email
+
+# Enforce the gate only when explicitly enabled AND sign-in is configured
+_REQUIRE_LOGIN = bool(os.environ.get("BTL_REQUIRE_LOGIN")) and gmail_auth.is_configured()
+if _REQUIRE_LOGIN and not CURRENT_MEMBER:
+    _login_err = ""
+    if st.session_state.get("auth_error"):
+        _login_err = f'<div class="btl-login-err">{html_escape(st.session_state.pop("auth_error"))}</div>'
+    st.markdown(
+        f"""
+        <div class="btl-login">
+          <div class="btl-login-brand">Be the Light <em>Cockpit</em></div>
+          <div class="btl-login-sub">Be The Light Decor — team dashboard</div>
+          <a class="btl-login-btn" href="{html_escape(gmail_auth.auth_url())}" target="_self">
+            Sign in with Google
+          </a>
+          <div class="btl-login-note">Use your @bethelightdecor.com account</div>
+          {_login_err}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
+
+# ═══════════════════════════════════════════════════════════
 # FIRST-RUN WIZARD
 # ═══════════════════════════════════════════════════════════
 
@@ -3891,25 +4037,13 @@ for k, v in defaults.items():
 
 st.markdown('<div class="cpt-header-marker"></div>', unsafe_allow_html=True)
 
-# ── Per-member Google sign-in: OAuth callback → session ────────────────────────
-import gmail_auth
-if "code" in st.query_params and "state" in st.query_params:
-    _email, _auth_err = gmail_auth.handle_callback(
-        st.query_params.get("code"), st.query_params.get("state"))
-    if _email:
-        st.session_state["member_email"] = _email
-        st.session_state.pop("auth_error", None)
-    else:
-        st.session_state["auth_error"] = _auth_err
-    st.query_params.clear()
-    st.rerun()
-
-CURRENT_MEMBER = st.session_state.get("member_email")
+# (Auth is resolved earlier in the AUTH GATE; CURRENT_MEMBER is already set.)
 
 # Quicknav query-param actions: terminal launch + metrics-pull queue
 _action_q = st.query_params.get("action")
 if _action_q == "signout":
     st.session_state.pop("member_email", None)
+    _delete_session_cookie()
     CURRENT_MEMBER = None
     st.query_params.clear()
     st.rerun()

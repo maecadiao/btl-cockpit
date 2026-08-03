@@ -5,4 +5,5 @@ google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
 google-auth-httplib2>=0.2.0
 cryptography>=42.0.0
+extra-streamlit-components>=0.1.60
 plotly>=5.18.0
