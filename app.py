@@ -4045,10 +4045,25 @@ if _REQUIRE_LOGIN and not CURRENT_MEMBER:
     # where the login cookie hasn't hydrated on the first script run. Give the
     # cookie one hydration cycle before deciding the user is logged out, so
     # internal links don't bounce a signed-in user to the login screen.
+    # While the persistent "remember me" cookie hydrates on a fresh page load,
+    # show a seamless dark splash that matches the app background — NEVER the
+    # login form — so page-to-page navigation never flashes the sign-in screen
+    # for someone who's actually signed in. Only after several hydration cycles
+    # with still no session do we fall through to the real login screen.
     _warm_tries = st.session_state.get("_cookie_warm_tries", 0)
-    if _cookie_mgr is not None and _warm_tries < 2:
+    if _cookie_mgr is not None and _warm_tries < 5:
         st.session_state["_cookie_warm_tries"] = _warm_tries + 1
-        time.sleep(0.4)
+        st.markdown(
+            '<div style="position:fixed;inset:0;z-index:99999;background:#0d1526;'
+            'display:flex;align-items:center;justify-content:center;">'
+            '<div style="font-family:\'Outfit\',\'Segoe UI\',sans-serif;'
+            'color:rgba(242,181,68,0.45);font-size:1.05rem;letter-spacing:0.2em;'
+            'text-transform:uppercase;animation:btlboot 1.1s ease-in-out infinite;">'
+            'Be the Light</div></div>'
+            '<style>@keyframes btlboot{0%,100%{opacity:0.35}50%{opacity:0.8}}</style>',
+            unsafe_allow_html=True,
+        )
+        time.sleep(0.35)
         st.rerun()
     _login_err = ""
     if st.session_state.get("auth_error"):
