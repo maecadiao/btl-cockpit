@@ -204,10 +204,12 @@ def auth_url() -> str:
 def handle_callback(code: str, state: str) -> tuple[str | None, str | None]:
     """Exchange the code. Returns (email, error). Stores the refresh token."""
     import sys
-    if not check_state(state):
+    # Generous window: the state only guards against forged callbacks, and a
+    # slow consent screen shouldn't read as "invalid". 1 hour is plenty.
+    if not check_state(state, max_age=3600):
         print(f"[gmail_auth] callback: STATE CHECK FAILED (state={(state or '')[:24]}...)",
               file=sys.stderr, flush=True)
-        return None, "Sign-in expired or invalid — please try again."
+        return None, "Sign-in link expired — click Sign in with Google again."
     try:
         flow = _flow(state=state)
         flow.fetch_token(code=code)

@@ -3943,10 +3943,17 @@ def _delete_session_cookie() -> None:
         pass
 
 
-# OAuth callback → establish session + persistent cookie
+# OAuth callback → establish session + persistent cookie.
+#   Guard against Streamlit re-running the script with the same ?code before
+#   the query params are cleared — exchanging a code twice fails as
+#   "invalid_grant" and would surface as a bogus sign-in error.
 if "code" in st.query_params and "state" in st.query_params:
-    _email, _auth_err = gmail_auth.handle_callback(
-        st.query_params.get("code"), st.query_params.get("state"))
+    _code = st.query_params.get("code")
+    if st.session_state.get("_oauth_code_done") == _code:
+        st.query_params.clear()
+        st.rerun()
+    st.session_state["_oauth_code_done"] = _code
+    _email, _auth_err = gmail_auth.handle_callback(_code, st.query_params.get("state"))
     if _email:
         st.session_state["member_email"] = _email
         st.session_state.pop("auth_error", None)
