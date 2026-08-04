@@ -4169,6 +4169,7 @@ elif _action_q == "pull-latest":
         _scripts_dir = Path(__file__).parent / "scripts"
         _pull_scripts = [
             ("QuickBooks", "pull_qbo.py"),
+            ("Receivables", "pull_qbo_receivables.py"),
             ("GoHighLevel", "pull_ghl.py"),
             ("Sales Pipeline", "pull_ghl_pipeline.py"),
             ("Jobber", "pull_jobber.py"),
@@ -7347,22 +7348,87 @@ with qbo_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
         st.markdown("#### QuickBooks Overview", unsafe_allow_html=False)
-        _qbo_cols = st.columns(4, gap="small")
+
+        # Headline totals stay from metrics.csv (fast, always present)
         _qbo_csv = _read_csv_latest([
             ("qbo", "revenue_mtd"), ("qbo", "revenue_ytd"),
             ("qbo", "ar_balance"),  ("qbo", "outstanding_count"),
         ])
+        _qbo_cols = st.columns(4, gap="small")
         _qbo_live = [
-            ("Revenue MTD",   f"${_qbo_csv.get(('qbo','revenue_mtd'), 0):,.0f}",      "month-to-date revenue"),
-            ("Revenue YTD",   f"${_qbo_csv.get(('qbo','revenue_ytd'), 0):,.0f}",      "year-to-date revenue"),
-            ("AR Balance",    f"${_qbo_csv.get(('qbo','ar_balance'), 0):,.0f}",       "total outstanding"),
-            ("Open Invoices", int(_qbo_csv.get(("qbo", "outstanding_count"), 0)),     "invoices awaiting payment"),
+            ("Revenue MTD",    f"${_qbo_csv.get(('qbo','revenue_mtd'), 0):,.0f}",  "money invoiced this month"),
+            ("Revenue YTD",    f"${_qbo_csv.get(('qbo','revenue_ytd'), 0):,.0f}",  "money invoiced this year"),
+            ("Owed to Us",     f"${_qbo_csv.get(('qbo','ar_balance'), 0):,.0f}",   "total unpaid by customers"),
+            ("Open Invoices",  int(_qbo_csv.get(("qbo", "outstanding_count"), 0)), "invoices awaiting payment"),
         ]
         for _i, (_title, _val, _desc) in enumerate(_qbo_live):
             with _qbo_cols[_i]:
                 st.metric(_title, _val, help=_desc)
-        if _qbo_csv:
-            st.caption("Live data from QuickBooks via metrics.csv")
+
+        # Receivables detail: aging + who to chase (cached snapshot, self-building)
+        _ar_path = VAULT_PATH / "system" / "metrics" / "qbo-receivables.json"
+
+        def _load_ar():
+            try:
+                return json.loads(_ar_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+
+        _ar = _load_ar()
+        if ((not _ar) or _ar.get("error")) and os.environ.get("QBO_REALM_ID") \
+                and not st.session_state.get("_qbo_autobuilt"):
+            st.session_state["_qbo_autobuilt"] = True
+            import subprocess as _sp5, sys as _sys5
+            try:
+                with st.spinner("Loading receivables from QuickBooks…"):
+                    _sp5.run(
+                        [_sys5.executable,
+                         str(Path(__file__).parent / "scripts" / "pull_qbo_receivables.py")],
+                        capture_output=True, text=True, timeout=45,
+                        env={**os.environ, "AGENTIC_OS_VAULT": str(VAULT_PATH)})
+                _ar = _load_ar()
+            except Exception:  # noqa: BLE001
+                pass
+
+        if _ar and not _ar.get("error") and _ar.get("aging"):
+            _od = _ar.get("overdue_total", 0)
+            if _od > 0:
+                st.markdown(
+                    f'<div style="margin:0.4rem 0 0.8rem 0;padding:0.7rem 1rem;border-radius:0.6rem;'
+                    f'background:rgba(208,90,90,0.10);box-shadow:0 0 0 1px rgba(208,90,90,0.30);'
+                    f'font-size:0.95rem;color:#e7a6a6;">⏰ <b>${_od:,.0f}</b> of the '
+                    f'${_ar.get("total_open",0):,.0f} owed is <b>past due</b></div>',
+                    unsafe_allow_html=True)
+
+            _lc, _rc = st.columns([1, 1], gap="medium")
+            with _lc:
+                st.markdown("**📊 Money owed, by age**")
+                _aging = _ar["aging"]
+                _maxv = max((a["value"] for a in _aging), default=0) or 1
+                _bars = []
+                for a in _aging:
+                    if a["value"] <= 0:
+                        continue
+                    _w = max(6, round(a["value"] / _maxv * 100))
+                    _od_cls = "cold" if a["bucket"] == "90+ days" else (
+                        "warn" if a["bucket"] not in ("Current",) else "hot")
+                    _bars.append(
+                        f'<div class="ghl-stage">'
+                        f'<div class="ghl-stage-head"><span class="ghl-stage-name">{html_escape(a["bucket"])}</span>'
+                        f'<span class="ghl-stage-amt">{a["count"]} · ${a["value"]:,.0f}</span></div>'
+                        f'<div class="ghl-bar"><div class="ghl-bar-fill {"val" if _od_cls!="cold" else "cnt"}" '
+                        f'style="width:{_w}%"></div></div></div>')
+                st.markdown("".join(_bars), unsafe_allow_html=True)
+            with _rc:
+                st.markdown("**💵 Biggest unpaid invoices**")
+                for o in _ar.get("top_unpaid", [])[:6]:
+                    _od_txt = f" · {o['days_overdue']}d overdue" if o.get("days_overdue") else " · current"
+                    st.markdown(f"- **${o['value']:,.0f}** · {html_escape(o['customer'])}{_od_txt}")
+
+            _upd = (_ar.get("updated", "")[:16].replace("T", " "))
+            st.caption(f"Live from QuickBooks · updated {_upd} · click ↻ pull to refresh")
+        elif _qbo_csv:
+            st.caption("Summary from metrics.csv — click ↻ pull for the receivables breakdown")
         else:
             st.markdown("---")
-            st.caption("No QBO data in metrics.csv yet — run a metrics pull first")
+            st.caption("No QBO data yet — click ↻ Pull to load live data")
