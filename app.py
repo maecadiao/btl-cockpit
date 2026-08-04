@@ -3241,6 +3241,22 @@ def _to_int(v):
         return 0
 
 
+def _five_h_run_output_tokens() -> int:
+    """Output tokens from skill runs in the last 5 hours. On Railway there are no
+    local Claude CLI sessions, so this is the cockpit's real 'token burn' — it
+    moves whenever a skill runs. Falls back to 0 when nothing ran."""
+    cutoff = datetime.now() - timedelta(hours=5)
+    total = 0
+    for r in scan_runs(1):
+        try:
+            t = datetime.fromisoformat((r.get("time") or "")[:19])
+        except (ValueError, TypeError):
+            continue
+        if t >= cutoff:
+            total += _to_int(r.get("tokens_out"))
+    return total
+
+
 def calc_metrics() -> dict:
     runs = scan_runs(30)
     today_str = date.today().isoformat()
@@ -5803,6 +5819,11 @@ elif not getattr(_cfg, "DEMO_MODE", False):
     _jsonl_usage = _read_usage_from_jsonl(hours=5.0)
     if _jsonl_usage["output"] > 0:
         five_h_tokens = _jsonl_usage["output"]
+# Cloud fallback: no local Claude CLI sessions exist on Railway, so the above
+# all resolve to 0. Use the tokens burned by skill runs in the last 5h instead,
+# so the meter actually moves when the team runs skills.
+if five_h_tokens == 0:
+    five_h_tokens = _five_h_run_output_tokens()
 week_tokens = usage["weekly"]["total"]
 routines_today = usage["today"]["routines"]
 today_runs = usage["today"]["runs"]
@@ -5847,6 +5868,16 @@ from overview_widgets import (
 
 with overview_tab:
     _range_start, _range_end, _range_label = render_range_bar()
+    if _enabled_cards.get("tokenburn", True):
+        st.markdown(
+            render_tokenburn_meter(
+                used=five_h_tokens,
+                budget=LIMITS["five_hour_tokens"],
+                reset_at=five_h_reset,
+                last_pull_ts=read_last_pull_ts(),
+            ),
+            unsafe_allow_html=True,
+        )
     st.markdown(
         f'<div class="cpt-cat">business at a glance '
         f'<span style="color:var(--fg-mute);text-transform:none;letter-spacing:0.02em">'

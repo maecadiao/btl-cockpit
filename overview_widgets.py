@@ -135,13 +135,18 @@ def render_range_bar() -> tuple[datetime | None, datetime | None]:
 
 # Plain-English labels. "snapshot" = a live "right now" value (range can't change
 # it); "range" = a total summed over the selected window, from daily-series.json.
+# Each card links to where its data is pulled from (opens the source app).
+_QBO_URL = "https://qbo.intuit.com"
+_GHL_URL = "https://app.gohighlevel.com"
+_JOBBER_URL = "https://secure.getjobber.com"
+
 OVERVIEW_CARDS = [
     {"mode": "snapshot", "source": "qbo", "metric": "ar_balance",
-     "label": "Money Owed to Us", "format": "currency"},
-    {"mode": "range", "series": "revenue",  "label": "Revenue",   "format": "currency"},
-    {"mode": "range", "series": "spending", "label": "Spending",  "format": "currency"},
-    {"mode": "range", "series": "leads",    "label": "New Leads", "format": "integer"},
-    {"mode": "range", "series": "jobs",     "label": "Jobs",      "format": "integer"},
+     "label": "Money Owed to Us", "format": "currency", "link": _QBO_URL},
+    {"mode": "range", "series": "revenue",  "label": "Revenue",   "format": "currency", "link": _QBO_URL},
+    {"mode": "range", "series": "spending", "label": "Spending",  "format": "currency", "link": _QBO_URL},
+    {"mode": "range", "series": "leads",    "label": "New Leads", "format": "integer",  "link": _GHL_URL},
+    {"mode": "range", "series": "jobs",     "label": "Jobs",      "format": "integer",  "link": _JOBBER_URL},
 ]
 
 
@@ -275,7 +280,7 @@ def compute_overview(vault_path: Path, cards: list[dict],
         if c.get("mode") == "range":
             total, dp, fresh = _range_total(daily, c["series"], start, end)
             out.append({
-                "label": c["label"], "format": c["format"],
+                "label": c["label"], "format": c["format"], "link": c.get("link"),
                 "value": total, "delta_pct": dp,
                 "dot": ("ok" if fresh else "stale") if total is not None else "none",
                 "ok": total is not None,
@@ -283,7 +288,7 @@ def compute_overview(vault_path: Path, cards: list[dict],
         else:
             s = snaps.get((c["source"], c["metric"]))
             out.append({
-                "label": c["label"], "format": c["format"],
+                "label": c["label"], "format": c["format"], "link": c.get("link"),
                 "value": (s or {}).get("value"),
                 "delta_pct": None,  # AR is a live balance — no window comparison
                 "dot": (s or {}).get("dot", "none"),
@@ -296,13 +301,24 @@ def compute_overview(vault_path: Path, cards: list[dict],
 def render_metric_cards(computed: list[dict], range_label: str = "") -> None:
     tiles = []
     for c in computed:
+        _link = c.get("link")
+        # Linked cards render as an <a> (opens the source app in a new tab);
+        # unlinked ones stay a plain <div>. Both reuse the .btl-mc styling.
+        if _link:
+            _open, _close, _cls = (
+                f'<a class="btl-mc btl-mc-link" href="{_link}" target="_blank" '
+                f'rel="noopener" title="Open the source app">'), '</a>', ' has-link'
+            _arrow = '<span class="btl-mc-go">↗</span>'
+        else:
+            _open, _close, _cls, _arrow = '<div class="btl-mc">', '</div>', '', ''
+
         if not c["ok"] or c["value"] is None:
-            delta = ('<span class="btl-mc-delta flat">connect to see</span>')
             tiles.append(
-                f'<div class="btl-mc"><div class="btl-mc-head">'
+                f'{_open}<div class="btl-mc-head">'
                 f'<span class="btl-mc-label">{c["label"]}</span>'
-                f'<span class="btl-mc-dot none"></span></div>'
-                f'<div class="btl-mc-value">—</div>{delta}</div>'
+                f'<span class="btl-mc-dot none"></span>{_arrow}</div>'
+                f'<div class="btl-mc-value">—</div>'
+                f'<span class="btl-mc-delta flat">connect to see</span>{_close}'
             )
             continue
         if c.get("snapshot"):
@@ -318,10 +334,20 @@ def render_metric_cards(computed: list[dict], range_label: str = "") -> None:
             else:
                 delta_html = f'<span class="btl-mc-delta down">▼&nbsp;{abs(dp):.0f}% vs prior period</span>'
         tiles.append(
-            f'<div class="btl-mc"><div class="btl-mc-head">'
+            f'{_open}<div class="btl-mc-head">'
             f'<span class="btl-mc-label">{c["label"]}</span>'
-            f'<span class="btl-mc-dot {c["dot"]}"></span></div>'
+            f'<span class="btl-mc-dot {c["dot"]}"></span>{_arrow}</div>'
             f'<div class="btl-mc-value">{_fmt_value(c["value"], c["format"])}</div>'
-            f'{delta_html}</div>'
+            f'{delta_html}{_close}'
         )
-    st.markdown(f'<div class="btl-mc-grid">{"".join(tiles)}</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<style>'
+        'a.btl-mc-link{text-decoration:none;color:inherit;display:block;'
+        'transition:box-shadow .15s ease, transform .15s ease;}'
+        'a.btl-mc-link:hover{box-shadow:0 0 0 1px rgba(242,181,68,0.55);'
+        'transform:translateY(-1px);}'
+        '.btl-mc-go{margin-left:auto;color:rgba(242,181,68,0.55);font-size:0.8rem;}'
+        'a.btl-mc-link:hover .btl-mc-go{color:var(--accent,#f2b544);}'
+        '.btl-mc-head{display:flex;align-items:center;gap:0.4rem;}'
+        '</style>'
+        f'<div class="btl-mc-grid">{"".join(tiles)}</div>', unsafe_allow_html=True)
