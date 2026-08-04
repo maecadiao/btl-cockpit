@@ -167,8 +167,22 @@ def _ghl_pipeline() -> tuple[str | None, str | None]:
         return None, f"GHL pipeline fetch failed: HTTP {e.code}"
     except Exception as e:  # noqa: BLE001
         return None, f"GHL pipeline fetch failed: {str(e)[:120]}"
+
+    # Restrict the review to a SINGLE pipeline (default: the main sales pipeline).
+    # Configurable via GHL_PIPELINE_NAME. Matching ignores case, whitespace and
+    # hyphen spacing so small punctuation differences in the name still match.
+    _target = _env("GHL_PIPELINE_NAME") or "1: Sales Pipeline- All in One"
+
+    def _norm(s: str) -> str:
+        return "".join((s or "").lower().split()).replace("-", "")
+
+    _tn = _norm(_target)
+    opps = [o for o in opps if _tn and _tn in _norm(o.get("pipelineName"))]
+    _pipe_label = _target.strip()
+
     if not opps:
-        return "=== GHL OPEN PIPELINE — LIVE DATA ===\nNo open opportunities in the pipeline.\n", None
+        return (f"=== GHL OPEN PIPELINE: {_pipe_label} — LIVE DATA ===\n"
+                "No open opportunities in this pipeline.\n"), None
 
     now = datetime.now(timezone.utc)
 
@@ -184,7 +198,7 @@ def _ghl_pipeline() -> tuple[str | None, str | None]:
         stage = (o.get("pipelineStageName") or o.get("pipelineStageId") or "Unknown")[:60]
         by_stage.setdefault(stage, []).append(o)
 
-    lines = [f"=== GHL OPEN PIPELINE — LIVE DATA ({len(opps)} open opportunities, "
+    lines = [f"=== GHL OPEN PIPELINE: {_pipe_label} — LIVE DATA ({len(opps)} open opportunities, "
              f"total ${sum(float(o.get('monetaryValue') or 0) for o in opps):,.0f}) ==="]
     for stage, items in sorted(by_stage.items(), key=lambda kv: -len(kv[1])):
         total = sum(float(o.get("monetaryValue") or 0) for o in items)
