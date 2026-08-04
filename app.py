@@ -5847,16 +5847,6 @@ from overview_widgets import (
 
 with overview_tab:
     _range_start, _range_end, _range_label = render_range_bar()
-    if _enabled_cards.get("tokenburn", True):
-        st.markdown(
-            render_tokenburn_meter(
-                used=five_h_tokens,
-                budget=LIMITS["five_hour_tokens"],
-                reset_at=five_h_reset,
-                last_pull_ts=read_last_pull_ts(),
-            ),
-            unsafe_allow_html=True,
-        )
     st.markdown(
         f'<div class="cpt-cat">business at a glance '
         f'<span style="color:var(--fg-mute);text-transform:none;letter-spacing:0.02em">'
