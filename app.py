@@ -4045,8 +4045,9 @@ if _REQUIRE_LOGIN and not CURRENT_MEMBER:
     # where the login cookie hasn't hydrated on the first script run. Give the
     # cookie one hydration cycle before deciding the user is logged out, so
     # internal links don't bounce a signed-in user to the login screen.
-    if _cookie_mgr is not None and not st.session_state.get("_cookie_warmed"):
-        st.session_state["_cookie_warmed"] = True
+    _warm_tries = st.session_state.get("_cookie_warm_tries", 0)
+    if _cookie_mgr is not None and _warm_tries < 2:
+        st.session_state["_cookie_warm_tries"] = _warm_tries + 1
         time.sleep(0.4)
         st.rerun()
     _login_err = ""
@@ -4211,10 +4212,15 @@ if _view_q in ("runs", "drafts"):
 _run_q = st.query_params.get("run")
 if _run_q:
     try:
-        _run_path = (VAULT_PATH / _run_q).resolve()
-        # Safety: must stay inside the vault
-        _run_path.relative_to(VAULT_PATH.resolve())
-        if _run_path.exists() and _run_path.suffix == ".md":
+        # Block path traversal WITHOUT resolving symlinks: system/runs is a
+        # symlink to the Railway volume, so .resolve() points outside the vault
+        # and would trip a naive containment check — which was clearing the link
+        # and dumping the user back on the main page instead of the run.
+        _rel = _run_q.replace("\\", "/")
+        if Path(_rel).is_absolute() or ".." in Path(_rel).parts:
+            raise ValueError("unsafe run path")
+        _run_path = VAULT_PATH / _rel   # not resolved: the symlink target is intended
+        if _run_path.is_file() and _run_path.suffix == ".md":
             _raw = _run_path.read_text(encoding="utf-8")
             # Parse frontmatter for skill + time
             _fm_match = re.search(r"^---\n(.*?)\n---", _raw, re.DOTALL)
