@@ -4316,12 +4316,7 @@ st.markdown(
 # QUICK-NAV PILLS  (claude code · vault · daily · runs · drafts · [status])
 # ═══════════════════════════════════════════════════════════
 
-today_note = today_daily_note()
-today_runs_dir = RUNS_DIR / date.today().isoformat()
-
-daily_note_uri = run_view_uri(today_note) if today_note.exists() else "?view=runs"
 runs_folder_uri = "?view=runs"
-drafts_folder_uri = "?view=drafts"
 
 if st.session_state.running:
     _active = st.session_state.active_skill or "skill"
@@ -4359,10 +4354,8 @@ st.markdown(
         <a class="qn-claude" href="/" target="_self">
             <span class="qn-icon">◆</span>BTL cockpit<span class="qn-arrow">↗</span>
         </a>
-        <a href="{daily_note_uri}" target="_self"><span class="qn-icon">§</span>daily note</a>
-        <a href="{runs_folder_uri}" target="_self"><span class="qn-icon">¶</span>runs folder</a>
-        <a href="{drafts_folder_uri}" target="_self"><span class="qn-icon">※</span>drafts</a>
-        <a class="qn-pull" href="?action=pull-latest" target="_self" title="Queue /metrics-pull skill"><span class="qn-icon">↻</span>pull</a>
+        <a href="{runs_folder_uri}" target="_self"><span class="qn-icon">¶</span>runs</a>
+        <a class="qn-pull" href="?action=pull-latest" target="_self" title="Refresh dashboard data"><span class="qn-icon">↻</span>pull</a>
         {_auth_html}
         {_status_html}
     </div>
