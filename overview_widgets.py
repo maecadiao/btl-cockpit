@@ -26,14 +26,16 @@ def _tasks_path(vault_path: Path) -> Path:
 
 
 def _read_tasks(vault_path: Path) -> dict:
+    """Per-member store: {date, members: {name: [{id,text,done}, ...]}}. Resets
+    daily. Migrates the old single-list shape by starting fresh for the day."""
     today = date.today().isoformat()
     try:
         store = json.loads(_tasks_path(vault_path).read_text(encoding="utf-8"))
-        if store.get("date") != today:            # new day — reset, like the plugin
-            return {"date": today, "tasks": []}
+        if store.get("date") != today or "members" not in store:
+            return {"date": today, "members": {}}
         return store
     except (OSError, json.JSONDecodeError):
-        return {"date": today, "tasks": []}
+        return {"date": today, "members": {}}
 
 
 def _write_tasks(vault_path: Path, store: dict) -> None:
@@ -42,46 +44,54 @@ def _write_tasks(vault_path: Path, store: dict) -> None:
     path.write_text(json.dumps(store, indent=2), encoding="utf-8")
 
 
-def render_tasks_card(vault_path: Path) -> None:
-    """DAILY TASKS card: checklist + add-input, persisted across the team."""
+def render_tasks_card(vault_path: Path, members: list[str] | None = None) -> None:
+    """DAILY TASKS card: one checklist section per team member, persisted on the
+    shared volume so the whole team sees the same board."""
+    members = members or []
     store = _read_tasks(vault_path)
-    tasks = store["tasks"]
-    done_n = sum(1 for t in tasks if t.get("done"))
+    by_member = store.setdefault("members", {})
 
+    all_tasks = [t for m in members for t in by_member.get(m, [])]
+    done_n = sum(1 for t in all_tasks if t.get("done"))
     st.markdown(
         f'<div class="btl-panel-head"><span>Daily tasks</span>'
-        f'<span class="btl-panel-meta">{done_n}/{len(tasks)}</span></div>',
+        f'<span class="btl-panel-meta">{done_n}/{len(all_tasks)}</span></div>',
         unsafe_allow_html=True,
     )
-    if not tasks:
-        st.markdown('<div class="btl-tasks-empty">&gt; no tasks yet</div>',
-                    unsafe_allow_html=True)
+
     changed = False
-    for t in tasks:
-        checked = st.checkbox(
-            t.get("text", ""), value=bool(t.get("done")),
-            key=f"btl_task_{store['date']}_{t['id']}",
+    for name in members:
+        tasks = by_member.setdefault(name, [])
+        m_done = sum(1 for t in tasks if t.get("done"))
+        st.markdown(
+            f'<div class="btl-tasks-member">{name}'
+            f'<span class="btl-tasks-member-meta">{m_done}/{len(tasks)}</span></div>',
+            unsafe_allow_html=True,
         )
-        if checked != bool(t.get("done")):
-            t["done"] = checked
-            changed = True
+        for t in tasks:
+            checked = st.checkbox(
+                t.get("text", ""), value=bool(t.get("done")),
+                key=f"btl_task_{store['date']}_{name}_{t['id']}",
+            )
+            if checked != bool(t.get("done")):
+                t["done"] = checked
+                changed = True
+        with st.form(key=f"btl_task_form_{name}", clear_on_submit=True, border=False):
+            c1, c2 = st.columns([5, 1], gap="small")
+            with c1:
+                new_text = st.text_input(
+                    f"new task for {name}", key=f"btl_task_new_{name}",
+                    placeholder=f"add task for {name}…", label_visibility="collapsed",
+                )
+            with c2:
+                submitted = st.form_submit_button("＋", use_container_width=True)
+            if submitted and new_text.strip():
+                next_id = max((t["id"] for t in tasks), default=0) + 1
+                tasks.append({"id": next_id, "text": new_text.strip(), "done": False})
+                _write_tasks(vault_path, store)
+                st.rerun()
     if changed:
         _write_tasks(vault_path, store)
-
-    with st.form(key="btl_task_form", clear_on_submit=True, border=False):
-        c1, c2 = st.columns([5, 1], gap="small")
-        with c1:
-            new_text = st.text_input(
-                "new task", key="btl_task_new", placeholder="new task…",
-                label_visibility="collapsed",
-            )
-        with c2:
-            submitted = st.form_submit_button("＋", use_container_width=True)
-        if submitted and new_text.strip():
-            next_id = max((t["id"] for t in tasks), default=0) + 1
-            tasks.append({"id": next_id, "text": new_text.strip(), "done": False})
-            _write_tasks(vault_path, store)
-            st.rerun()
 
 
 # ── Date-range bar ────────────────────────────────────────────────────────────

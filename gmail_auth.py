@@ -331,6 +331,62 @@ def unread_block(email: str) -> tuple[str | None, str | None]:
     return "\n".join(lines) + "\n", None
 
 
+# ── huddle: latest Google Meet recording / notes email ────────────────────────
+
+def _message_text(service, msg_id: str) -> str:
+    """Best-effort plain-text body of a message."""
+    md = service.users().messages().get(userId="me", id=msg_id, format="full").execute()
+
+    def _walk(part) -> str:
+        out = ""
+        body = part.get("body", {}) or {}
+        if part.get("mimeType") == "text/plain" and body.get("data"):
+            out += base64.urlsafe_b64decode(body["data"]).decode("utf-8", "replace")
+        for p in (part.get("parts") or []):
+            out += _walk(p)
+        return out
+
+    text = _walk(md.get("payload", {})) or md.get("snippet", "")
+    return text[:4000]
+
+
+def huddle_block(email: str) -> tuple[str | None, str | None]:
+    """Search the member's Gmail for the most recent Google Meet recording / notes
+    email (the morning huddle) and return a formatted block for the briefing."""
+    if not get_refresh_token(email):
+        return None, "not connected"
+    try:
+        from googleapiclient.discovery import build
+        creds = _member_creds(email)
+        service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+        query = ('newer_than:2d ('
+                 'from:meet-recordings-noreply@google.com OR '
+                 'from:drive-shares-dm-noreply@google.com OR '
+                 'subject:(notes) OR subject:(recording) OR subject:(huddle) OR '
+                 '"Gemini" OR "Google Meet" OR "meeting notes")')
+        listing = service.users().messages().list(
+            userId="me", q=query, maxResults=5).execute()
+        msgs = listing.get("messages", [])
+        if not msgs:
+            return None, ("No Google Meet recording/notes email found in the last 2 days — "
+                          "brief from calendar + pipeline only.")
+        top = msgs[0]["id"]
+        meta = service.users().messages().get(
+            userId="me", id=top, format="metadata",
+            metadataHeaders=["From", "Subject", "Date"]).execute()
+        headers = {h["name"]: h["value"]
+                   for h in meta.get("payload", {}).get("headers", [])}
+        body = _message_text(service, top)
+        block = (f"=== MORNING HUDDLE — from Gmail ({email}) ===\n"
+                 f"From: {headers.get('From', '?')}\n"
+                 f"Subject: {headers.get('Subject', '(no subject)')}\n"
+                 f"Date: {headers.get('Date', '')[:31]}\n\n"
+                 f"{body.strip()}\n")
+        return block, None
+    except Exception as e:  # noqa: BLE001
+        return None, f"Huddle email fetch failed: {str(e)[:140]}"
+
+
 # ── read-only Calendar fetch ──────────────────────────────────────────────────
 
 def fetch_today_events(email: str) -> tuple[list[dict], str | None]:

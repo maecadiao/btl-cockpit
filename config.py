@@ -108,6 +108,9 @@ DEMO_LATEST_VIDEO = {
 
 SKILL_CATEGORY_ORDER = ["marketing", "sales", "admin", "production", "executive"]
 
+# Team roster — drives the per-member Daily Tasks card on the overview.
+TEAM_MEMBERS = ["Mae", "Hunter", "Shella", "Josh", "Maddi"]
+
 _AUTO = (
     "Act autonomously. Do not ask for confirmation. "
     "Do not use AskUserQuestion. "
@@ -236,6 +239,25 @@ SKILLS = [
     },
 
     # ─── EXECUTIVE ────────────────────────────────────────────────────────
+    {
+        "label": "Daily Briefing",
+        "prompt_template": (
+            _AUTO
+            + "You are the executive assistant for Be The Light Decor. Using ONLY the "
+            "LIVE DATA provided below, write a tight start-of-day briefing that sets the "
+            "whole day. Use these sections:\n"
+            "1. **Huddle takeaways** — key decisions, blockers, and follow-ups from this "
+            "morning's huddle.\n"
+            "2. **Today's schedule** — what's on the calendar.\n"
+            "3. **Money & pipeline to watch** — overdue invoices, quotes awaiting a "
+            "decision, jobs that need attention today.\n"
+            "4. **Top 3 priorities** — the three things that matter most today.\n"
+            "Be concrete and action-oriented. If the huddle data is missing, say so and "
+            "brief from the rest."
+        ),
+        "description": "Start-of-day briefing from the morning huddle + calendar & pipeline",
+        "category": "executive",
+    },
     {
         "label": "P&L Narrative",
         "prompt_template": _AUTO + "Run the /pl-narrative skill",

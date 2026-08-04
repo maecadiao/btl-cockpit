@@ -40,6 +40,7 @@ from config import (
     DRAFTS_AWAITING,
     SKILLS,
     SKILL_CATEGORY_ORDER,
+    TEAM_MEMBERS,
     RUN_TIMEOUT_SEC,
     PERMISSION_MODE,
     LIMITS,
@@ -1494,6 +1495,14 @@ hr.chapter::after { content: none; }
 }
 .btl-panel-head .btl-panel-meta { color: var(--fg-mute); letter-spacing: 0.06em; }
 .btl-tasks-empty { color: var(--fg-mute); font-size: 0.82rem; padding: 0.3rem 0 0.5rem; }
+.btl-tasks-member {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin: 0.7rem 0 0.15rem; padding-bottom: 0.2rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-family: 'Outfit', 'Segoe UI', sans-serif; font-size: 0.82rem;
+    font-weight: 600; letter-spacing: 0.04em; color: #f2b544;
+}
+.btl-tasks-member-meta { color: var(--fg-mute); font-size: 0.72rem; font-weight: 400; }
 
 /* LIVE badge in the header */
 .btl-live-pill {
@@ -6007,14 +6016,73 @@ def _build_activity_svg(df: pd.DataFrame) -> str:
 st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 
 # ── BTL Quick Action Row ───────────────────────────────────────────────────────
-_BTL_QUICK = ["Inbox Digest", "Crew Brief", "KPI Digest", "Billing Digest", "Pipeline Review"]
+_BTL_QUICK = ["Daily Briefing", "Inbox Digest", "Crew Brief", "KPI Digest",
+              "Billing Digest", "Pipeline Review"]
 _BTL_SKILL_MAP = {s["label"]: s for s in SKILLS}
+
+
+def _briefing_money_block() -> str:
+    """Short money + pipeline summary for the Daily Briefing, from the snapshots."""
+    base = VAULT_PATH / "system" / "metrics"
+    lines = []
+
+    def _load(name):
+        try:
+            return json.loads((base / name).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    p = _load("ghl-pipeline.json")
+    if p and not p.get("error"):
+        lines.append(f"Sales pipeline: {p.get('open_count', 0)} open opportunities, "
+                     f"${p.get('open_value', 0):,.0f}. Needs follow-up (10+ days quiet): "
+                     f"{len(p.get('stale', []))}.")
+        for s in p.get("stale", [])[:3]:
+            lines.append(f"  - stale: {s['name']} ({s['stage']}, {s['days']}d quiet)")
+    j = _load("jobber-schedule.json")
+    if j and not j.get("error"):
+        lines.append(f"Jobber: {j.get('jobs_scheduled', 0)} scheduled "
+                     f"(${j.get('scheduled_value', 0):,.0f}), {j.get('jobs_late', 0)} late.")
+        for o in j.get("late", [])[:3]:
+            lines.append(f"  - late job: {o['client']} (${o['value']:,.0f}, was {o['date']})")
+    a = _load("qbo-receivables.json")
+    if a and not a.get("error"):
+        lines.append(f"Receivables: ${a.get('total_open', 0):,.0f} owed, "
+                     f"${a.get('overdue_total', 0):,.0f} overdue.")
+        for o in a.get("top_unpaid", [])[:3]:
+            _od = f"{o['days_overdue']}d overdue" if o.get("days_overdue") else "current"
+            lines.append(f"  - unpaid: {o['customer']} ${o['value']:,.0f} ({_od})")
+    return "=== MONEY & PIPELINE ===\n" + ("\n".join(lines) if lines else "No snapshot data yet.")
+
 
 def _btl_quick_run(label: str):
     skill = _BTL_SKILL_MAP.get(label)
     if not skill:
         return
     prompt = skill["prompt_template"]
+    if label == "Daily Briefing":
+        member = st.session_state.get("member_email")
+        if not member:
+            st.session_state["inbox_needs_signin"] = True
+            return
+        parts = []
+        _huddle, _hnote = gmail_auth.huddle_block(member)
+        if _huddle:
+            parts.append(_huddle)
+        elif _hnote:
+            parts.append(f"=== MORNING HUDDLE ===\n{_hnote}")
+        try:
+            _cal, _cerr = gmail_auth.fetch_today_events(member)
+        except Exception:  # noqa: BLE001
+            _cal = []
+        if _cal:
+            parts.append("=== TODAY'S CALENDAR ===\n" + "\n".join(
+                f"- {e.get('time', '')}: {e.get('label', '')}" for e in _cal))
+        parts.append(_briefing_money_block())
+        prompt = prompt + "\n\n=== LIVE DATA FOR TODAY'S BRIEFING ===\n\n" + \
+            "\n\n".join(p for p in parts if p)
+        start_skill_run(label, prompt)
+        return
     if label == "Inbox Digest":
         member = st.session_state.get("member_email")
         if not member:
@@ -6060,8 +6128,8 @@ with overview_tab:
             )
     if st.session_state.pop("inbox_needs_signin", False):
         if gmail_auth.is_configured():
-            st.info("Inbox Digest reads *your own* Gmail — click **Sign in with Google** "
-                    "in the top bar to connect your inbox, then run it again.")
+            st.info("This reads *your own* Gmail — click **Sign in with Google** "
+                    "in the top bar to connect your account, then run it again.")
         else:
             st.warning("Gmail sign-in isn't configured yet.")
     st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
@@ -6124,8 +6192,8 @@ with overview_tab:
             if _show_drv:
                 render_daily_drivers_widget(_daily["drivers"], _today_iso)
             else:
-                # Daily tasks — team checklist, matches the Obsidian cockpit
-                render_tasks_card(VAULT_PATH)
+                # Daily tasks — one checklist section per team member
+                render_tasks_card(VAULT_PATH, TEAM_MEMBERS)
         st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
         # Business Health — monthly earnings / spending / leads / jobs.
         # Replaces the old agent-runs chart (redundant with the runs card
