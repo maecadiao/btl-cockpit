@@ -4155,34 +4155,42 @@ elif _action_q == "terminal":
         st.toast(f"Failed: {e}", icon="⚠️")
     st.query_params.clear()
 elif _action_q == "pull-latest":
-    try:
-        if _CLAUDE_CLI_USABLE:
-            uid, _ = write_queue_intent("metrics-pull")
-            st.toast(f"queued metrics-pull · {uid[:8]}", icon="✅")
-        else:
-            # Railway/cloud: run pull scripts directly
-            import subprocess as _sp, sys as _sys
-            _scripts_dir = Path(__file__).parent / "scripts"
-            _pull_scripts = [
-                "pull_ghl.py", "pull_jobber.py",
-                "pull_qbo.py", "pull_facebook.py",
-            ]
-            _errors = []
-            for _s in _pull_scripts:
-                _r = _sp.run(
-                    [_sys.executable, str(_scripts_dir / _s)],
-                    capture_output=True, text=True, timeout=30,
-                    env={**os.environ, "AGENTIC_OS_VAULT": str(VAULT_PATH)},
-                )
-                if _r.returncode != 0:
-                    _errors.append(f"{_s}: {_r.stderr[:120]}")
-            if _errors:
-                st.toast(f"Some pulls failed: {'; '.join(_errors[:2])}", icon="⚠️")
-            else:
-                st.toast("Metrics pulled successfully ✅", icon="✅")
-    except Exception as e:
-        st.toast(f"pull failed: {e}", icon="⚠️")
     st.query_params.clear()
+    if _CLAUDE_CLI_USABLE:
+        try:
+            uid, _ = write_queue_intent("metrics-pull")
+            st.session_state["pull_result"] = ("ok", f"Queued metrics-pull · {uid[:8]}")
+        except Exception as e:  # noqa: BLE001
+            st.session_state["pull_result"] = ("err", f"Pull failed: {e}")
+    else:
+        # Railway/cloud: run each pull script directly, with a visible spinner
+        # and a per-source result so the user knows exactly what refreshed.
+        import subprocess as _sp, sys as _sys
+        _scripts_dir = Path(__file__).parent / "scripts"
+        _pull_scripts = [
+            ("QuickBooks", "pull_qbo.py"),
+            ("GoHighLevel", "pull_ghl.py"),
+            ("Jobber", "pull_jobber.py"),
+            ("Facebook / Instagram", "pull_facebook.py"),
+        ]
+        _ok, _fail = [], []
+        with st.spinner("Refreshing dashboard data from QuickBooks, GoHighLevel, "
+                        "Jobber, and Facebook — this can take up to a minute…"):
+            for _label, _s in _pull_scripts:
+                try:
+                    _r = _sp.run(
+                        [_sys.executable, str(_scripts_dir / _s)],
+                        capture_output=True, text=True, timeout=45,
+                        env={**os.environ, "AGENTIC_OS_VAULT": str(VAULT_PATH)},
+                    )
+                    if _r.returncode == 0:
+                        _ok.append(_label)
+                    else:
+                        _fail.append((_label, (_r.stderr or _r.stdout or "").strip()[:140]))
+                except Exception as e:  # noqa: BLE001
+                    _fail.append((_label, str(e)[:140]))
+        st.session_state["pull_result"] = ("mixed", {"ok": _ok, "fail": _fail})
+    st.rerun()
 
 # Runs / Drafts folder viewers
 _view_q = st.query_params.get("view")
@@ -4363,6 +4371,27 @@ st.markdown(
 )
 if st.session_state.get("auth_error"):
     st.warning(st.session_state.pop("auth_error"))
+
+# Persistent result banner after a "pull" (data refresh) — toasts vanished too
+# fast to notice, so show a lasting success/warning the user can actually read.
+_pr = st.session_state.pop("pull_result", None)
+if _pr:
+    _kind, _payload = _pr
+    if _kind == "ok":
+        st.success(_payload)
+    elif _kind == "err":
+        st.error(_payload)
+    elif _kind == "mixed":
+        _ok, _fail = _payload.get("ok", []), _payload.get("fail", [])
+        if _ok and not _fail:
+            st.success(f"✅ Dashboard data refreshed — {', '.join(_ok)}.")
+        elif _ok:
+            st.warning(
+                "Refreshed: " + ", ".join(_ok) + ".  \nCouldn't refresh: "
+                + "; ".join(f"**{_n}** ({_e})" for _n, _e in _fail))
+        else:
+            st.error("Couldn't refresh any source:  \n"
+                     + "; ".join(f"**{_n}** ({_e})" for _n, _e in _fail))
 
 
 # ═══════════════════════════════════════════════════════════
