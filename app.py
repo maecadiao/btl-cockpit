@@ -3946,6 +3946,27 @@ def cancel_current_run():
     RT["done"] = True
 
 
+def _parse_assignments(text: str) -> dict:
+    """Extract the <<<ASSIGNMENTS>>> block from a Daily Briefing into
+    {name: [task, ...]}, restricted to known team members."""
+    m = re.search(r"<<<ASSIGNMENTS>>>(.*?)<<<END ASSIGNMENTS>>>",
+                  text, re.DOTALL | re.IGNORECASE)
+    if not m:
+        return {}
+    valid = {n.lower(): n for n in TEAM_MEMBERS}
+    out: dict = {}
+    for line in m.group(1).strip().splitlines():
+        if ":" not in line:
+            continue
+        name, _, rest = line.partition(":")
+        key = name.strip().lstrip("-*• ").strip().lower()
+        if key in valid:
+            tasks = [t.strip(" -*•\t") for t in rest.split("|") if t.strip(" -*•\t")]
+            if tasks:
+                out[valid[key]] = tasks
+    return out
+
+
 def finalize_run_if_done(label: str, prompt: str):
     """Called when RT['done']==True. Persists output, resets session state."""
     if RT.get("cancelled"):
@@ -3959,6 +3980,20 @@ def finalize_run_if_done(label: str, prompt: str):
         log_run(label, ok=False)
     else:
         output = RT.get("text", "").strip() or "(no text output)"
+        # Daily Briefing: parse the machine ASSIGNMENTS block, push each person's
+        # action items into their Daily Tasks, then strip the block from the
+        # human-facing output so it isn't shown or saved.
+        if label == "Daily Briefing":
+            _assigns = _parse_assignments(output)
+            if _assigns:
+                try:
+                    _n = assign_tasks(VAULT_PATH, _assigns)
+                    if _n:
+                        st.session_state["briefing_assigned"] = _n
+                except Exception:  # noqa: BLE001
+                    pass
+            output = re.sub(r"<<<ASSIGNMENTS>>>.*?<<<END ASSIGNMENTS>>>", "",
+                            output, flags=re.DOTALL | re.IGNORECASE).strip()
         st.session_state.last_output = output
         meta = {
             "cost_usd": RT.get("cost_usd"),
@@ -5872,7 +5907,7 @@ overview_tab, ghl_tab, jobber_tab, social_tab, qbo_tab, skills_tab = st.tabs([
 
 from overview_widgets import (
     OVERVIEW_CARDS, compute_overview, render_metric_cards,
-    render_range_bar, render_tasks_card,
+    render_range_bar, render_tasks_card, assign_tasks,
 )
 
 with overview_tab:
@@ -6132,6 +6167,10 @@ with overview_tab:
                     "in the top bar to connect your account, then run it again.")
         else:
             st.warning("Gmail sign-in isn't configured yet.")
+    _ba = st.session_state.pop("briefing_assigned", None)
+    if _ba:
+        st.success(f"📋 Daily Briefing added {_ba} task{'s' if _ba != 1 else ''} to "
+                   "the team's Daily Tasks below.")
     st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
 
 # (tabs are created above, before the token-burn meter)

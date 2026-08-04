@@ -44,6 +44,27 @@ def _write_tasks(vault_path: Path, store: dict) -> None:
     path.write_text(json.dumps(store, indent=2), encoding="utf-8")
 
 
+def assign_tasks(vault_path: Path, assignments: dict) -> int:
+    """Merge {name: [task, ...]} into today's per-member store (skipping exact
+    same-day duplicates). Returns how many new tasks were added."""
+    store = _read_tasks(vault_path)
+    by_member = store.setdefault("members", {})
+    added = 0
+    for name, texts in assignments.items():
+        lst = by_member.setdefault(name, [])
+        existing = {t.get("text", "").strip().lower() for t in lst}
+        for tx in texts:
+            tx = (tx or "").strip()
+            if tx and tx.lower() not in existing:
+                nid = max((t["id"] for t in lst), default=0) + 1
+                lst.append({"id": nid, "text": tx, "done": False, "src": "briefing"})
+                existing.add(tx.lower())
+                added += 1
+    if added:
+        _write_tasks(vault_path, store)
+    return added
+
+
 def render_tasks_card(vault_path: Path, members: list[str] | None = None) -> None:
     """DAILY TASKS card: one checklist section per team member, persisted on the
     shared volume so the whole team sees the same board."""

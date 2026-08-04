@@ -252,8 +252,17 @@ SKILLS = [
             "3. **Money & pipeline to watch** — overdue invoices, quotes awaiting a "
             "decision, jobs that need attention today.\n"
             "4. **Top 3 priorities** — the three things that matter most today.\n"
+            "5. **Assignments** — action items per person, drawn from the huddle.\n"
             "Be concrete and action-oriented. If the huddle data is missing, say so and "
-            "brief from the rest."
+            "brief from the rest.\n\n"
+            "AFTER the human-readable briefing, output a machine block EXACTLY in this "
+            "format so the cockpit can assign the tasks (only these team members: "
+            "Mae, Hunter, Shella, Josh, Maddi; one line per person who has task(s); "
+            "separate multiple tasks with ' | '; omit people with no tasks):\n"
+            "<<<ASSIGNMENTS>>>\n"
+            "Mae: task one | task two\n"
+            "Hunter: task\n"
+            "<<<END ASSIGNMENTS>>>"
         ),
         "description": "Start-of-day briefing from the morning huddle + calendar & pipeline",
         "category": "executive",
