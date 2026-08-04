@@ -7127,13 +7127,32 @@ with ghl_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 
-        _ghlp = None
-        try:
-            _ghlp = json.loads(
-                (VAULT_PATH / "system" / "metrics" / "ghl-pipeline.json")
-                .read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            _ghlp = None
+        _ghlp_path = VAULT_PATH / "system" / "metrics" / "ghl-pipeline.json"
+
+        def _load_ghlp():
+            try:
+                return json.loads(_ghlp_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+
+        _ghlp = _load_ghlp()
+        # Self-populate: if the snapshot is missing (e.g. right after a deploy,
+        # before any pull or scheduler run), build it live ONCE this session so
+        # the tab is never stuck on the empty fallback when GHL is reachable.
+        if ((not _ghlp) or _ghlp.get("error")) and os.environ.get("GHL_API_KEY") \
+                and not st.session_state.get("_ghl_autobuilt"):
+            st.session_state["_ghl_autobuilt"] = True
+            import subprocess as _sp3, sys as _sys3
+            try:
+                with st.spinner("Loading your sales pipeline from GoHighLevel…"):
+                    _sp3.run(
+                        [_sys3.executable,
+                         str(Path(__file__).parent / "scripts" / "pull_ghl_pipeline.py")],
+                        capture_output=True, text=True, timeout=45,
+                        env={**os.environ, "AGENTIC_OS_VAULT": str(VAULT_PATH)})
+                _ghlp = _load_ghlp()
+            except Exception:  # noqa: BLE001
+                pass
 
         if _ghlp and not _ghlp.get("error") and _ghlp.get("by_stage"):
             st.markdown(f"#### Sales Pipeline — {html_escape(_ghlp.get('pipeline',''))}")
