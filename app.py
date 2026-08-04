@@ -4172,6 +4172,7 @@ elif _action_q == "pull-latest":
             ("GoHighLevel", "pull_ghl.py"),
             ("Sales Pipeline", "pull_ghl_pipeline.py"),
             ("Jobber", "pull_jobber.py"),
+            ("Job Schedule", "pull_jobber_schedule.py"),
             ("Facebook / Instagram", "pull_facebook.py"),
         ]
         _ok, _fail = [], []
@@ -7250,25 +7251,97 @@ with jobber_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
         st.markdown("#### Jobber Schedule", unsafe_allow_html=False)
-        _job_cols = st.columns(4, gap="small")
-        _job_csv = _read_csv_latest([
-            ("jobber", "jobs_today"), ("jobber", "jobs_week"),
-            ("jobber", "jobs_scheduled"), ("jobber", "jobs_late"),
-        ])
-        _job_live = [
-            ("Jobs Today",     int(_job_csv.get(("jobber", "jobs_today"), 0)),      "on the schedule today"),
-            ("Jobs This Week", int(_job_csv.get(("jobber", "jobs_week"), 0)),       "confirmed this week"),
-            ("Total Scheduled",int(_job_csv.get(("jobber", "jobs_scheduled"), 0)),  "all upcoming jobs"),
-            ("Jobs Late",      int(_job_csv.get(("jobber", "jobs_late"), 0)),       "past scheduled date"),
-        ]
-        for _i, (_title, _val, _desc) in enumerate(_job_live):
-            with _job_cols[_i]:
-                st.metric(_title, _val, help=_desc)
-        if _job_csv:
-            st.caption("Live data from Jobber via metrics.csv")
+
+        _jsc_path = VAULT_PATH / "system" / "metrics" / "jobber-schedule.json"
+
+        def _load_jsc():
+            try:
+                return json.loads(_jsc_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+
+        _jsc = _load_jsc()
+        # Self-populate once if the snapshot is missing (fresh deploy).
+        if ((not _jsc) or _jsc.get("error")) and os.environ.get("JOBBER_ACCESS_TOKEN") \
+                and not st.session_state.get("_jobber_autobuilt"):
+            st.session_state["_jobber_autobuilt"] = True
+            import subprocess as _sp4, sys as _sys4
+            try:
+                with st.spinner("Loading your job schedule from Jobber…"):
+                    _sp4.run(
+                        [_sys4.executable,
+                         str(Path(__file__).parent / "scripts" / "pull_jobber_schedule.py")],
+                        capture_output=True, text=True, timeout=45,
+                        env={**os.environ, "AGENTIC_OS_VAULT": str(VAULT_PATH)})
+                _jsc = _load_jsc()
+            except Exception:  # noqa: BLE001
+                pass
+
+        if _jsc and not _jsc.get("error"):
+            _job_cols = st.columns(4, gap="small")
+            _job_live = [
+                ("Jobs Today",     int(_jsc.get("jobs_today", 0)),     "on the schedule today"),
+                ("Jobs This Week", int(_jsc.get("jobs_week", 0)),      "starting this week"),
+                ("Total Scheduled",int(_jsc.get("jobs_scheduled", 0)), "all upcoming + active jobs"),
+                ("Jobs Late",      int(_jsc.get("jobs_late", 0)),      "past scheduled date"),
+            ]
+            for _i, (_title, _val, _desc) in enumerate(_job_live):
+                with _job_cols[_i]:
+                    st.metric(_title, _val, help=_desc)
+
+            _sv = _jsc.get("scheduled_value", 0)
+            _sc = _jsc.get("jobs_scheduled", 0)
+            st.markdown(
+                f'<div style="margin:0.4rem 0 0.8rem 0;padding:0.7rem 1rem;border-radius:0.6rem;'
+                f'background:rgba(242,181,68,0.08);box-shadow:0 0 0 1px rgba(242,181,68,0.25);'
+                f'font-size:0.95rem;color:#f8dfae;">💰 <b>${_sv:,.0f}</b> in scheduled work '
+                f'across {_sc} jobs</div>', unsafe_allow_html=True)
+
+            _lc, _rc = st.columns(2, gap="medium")
+            with _lc:
+                st.markdown("**🗓 Next up** &nbsp;·&nbsp; soonest start dates")
+                _up = _jsc.get("upcoming", [])
+                if _up:
+                    for o in _up:
+                        _v = f" · ${o['value']:,.0f}" if o.get("value") else ""
+                        st.markdown(f"- **{o['date']}** · {html_escape(o['client'])} "
+                                    f"· {html_escape(o['title'][:38])}{_v}")
+                else:
+                    st.caption("No upcoming jobs scheduled.")
+            with _rc:
+                st.markdown("**⏰ Running late** &nbsp;·&nbsp; past their date")
+                _lt = _jsc.get("late", [])
+                if _lt:
+                    for o in _lt:
+                        _v = f" · ${o['value']:,.0f}" if o.get("value") else ""
+                        st.markdown(f"- **{html_escape(o['client'])}** · "
+                                    f"{html_escape(o['title'][:34])} · was {o['date']}{_v}")
+                else:
+                    st.caption("Nothing overdue — on track.")
+
+            _upd = (_jsc.get("updated", "")[:16].replace("T", " "))
+            st.caption(f"Live from Jobber · updated {_upd} · click ↻ pull to refresh")
         else:
-            st.markdown("---")
-            st.caption("No Jobber data in metrics.csv yet — run a metrics pull first")
+            # Fallback: metrics.csv counts until the first pull
+            _job_cols = st.columns(4, gap="small")
+            _job_csv = _read_csv_latest([
+                ("jobber", "jobs_today"), ("jobber", "jobs_week"),
+                ("jobber", "jobs_scheduled"), ("jobber", "jobs_late"),
+            ])
+            _job_live = [
+                ("Jobs Today",     int(_job_csv.get(("jobber", "jobs_today"), 0)),      "on the schedule today"),
+                ("Jobs This Week", int(_job_csv.get(("jobber", "jobs_week"), 0)),       "confirmed this week"),
+                ("Total Scheduled",int(_job_csv.get(("jobber", "jobs_scheduled"), 0)),  "all upcoming jobs"),
+                ("Jobs Late",      int(_job_csv.get(("jobber", "jobs_late"), 0)),       "past scheduled date"),
+            ]
+            for _i, (_title, _val, _desc) in enumerate(_job_live):
+                with _job_cols[_i]:
+                    st.metric(_title, _val, help=_desc)
+            if _job_csv:
+                st.caption("Summary from metrics.csv — click ↻ pull for the full schedule view")
+            else:
+                st.markdown("---")
+                st.caption("No Jobber data yet — click ↻ Pull to load live data")
 
 with qbo_tab:
     if _layout_v == "v2":
