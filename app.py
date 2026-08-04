@@ -3963,6 +3963,15 @@ if "code" in st.query_params and "state" in st.query_params:
     st.query_params.clear()
     st.rerun()
 
+# Emergency access: a private ?unlock=<secret> URL that always gets an admin
+# back in, so a Google-sign-in hiccup can NEVER hard-lock the team out.
+_unlock_secret = os.environ.get("BTL_ADMIN_UNLOCK")
+if _unlock_secret and st.query_params.get("unlock") == _unlock_secret:
+    st.session_state["member_email"] = "admin@bethelightdecor.com"
+    _write_session_cookie("admin@bethelightdecor.com")
+    st.query_params.clear()
+    st.rerun()
+
 # Resolve current member: session first, then the persistent cookie
 CURRENT_MEMBER = st.session_state.get("member_email")
 if not CURRENT_MEMBER:
