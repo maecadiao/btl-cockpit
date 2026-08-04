@@ -6096,10 +6096,80 @@ with skills_tab:
         _skill_button_grid(_items, f"sktab_{_cat}")
 
 with admin_tab:
-    _admin_items = _sk_by_cat.get("admin", [])
-    if _admin_items:
-        st.markdown('<div class="cpt-cat">admin skills</div>', unsafe_allow_html=True)
-        _skill_button_grid(_admin_items, "admtab")
+    st.markdown('<div class="cpt-cat">system status</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<a href="?action=pull-latest" target="_self" '
+        'style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.4rem 0.9rem;'
+        'border-radius:999px;color:#f8dfae;background:rgba(242,181,68,0.08);'
+        'box-shadow:0 0 0 1px rgba(242,181,68,0.4);text-decoration:none;font-size:0.85rem;">'
+        '↻ Refresh all data now</a>', unsafe_allow_html=True)
+
+    _lp = {}
+    try:
+        _lp = json.loads(LAST_PULL_JSON.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        _lp = {}
+
+    _friendly = {
+        "qbo": "QuickBooks", "qbo_receivables": "QuickBooks · receivables",
+        "ghl": "GoHighLevel", "ghl_pipeline": "GoHighLevel · sales pipeline",
+        "jobber": "Jobber", "jobber_schedule": "Jobber · schedule",
+        "facebook": "Facebook", "instagram": "Instagram",
+        "bizhealth": "Business Health", "daily_series": "Daily metrics",
+    }
+
+    def _ago(_ts: str) -> str:
+        try:
+            _d = datetime.fromisoformat(_ts.replace("Z", "+00:00"))
+            _s = (datetime.now(timezone.utc) - _d).total_seconds()
+        except Exception:  # noqa: BLE001
+            return "never"
+        if _s < 3600:
+            return f"{int(_s // 60)}m ago"
+        if _s < 86400:
+            return f"{int(_s // 3600)}h ago"
+        return f"{int(_s // 86400)}d ago"
+
+    _order = ["qbo", "qbo_receivables", "ghl", "ghl_pipeline", "jobber",
+              "jobber_schedule", "facebook", "instagram", "bizhealth", "daily_series"]
+    _keys = [k for k in _order if k in _lp] + [k for k in _lp if k not in _order]
+    if _keys:
+        _rows = []
+        for _k in _keys:
+            _e = _lp.get(_k, {})
+            _status, _ts, _err = _e.get("status", "?"), _e.get("ts", ""), _e.get("error", "")
+            _dot = "#86c290" if _status == "ok" else ("#d7b56a" if _status == "stale" else "#d05a5a")
+            _statxt = "Connected" if _status == "ok" else ("Stale" if _status == "stale" else "Needs attention")
+            _label = _friendly.get(_k, _k.replace("_", " ").title())
+            _errhtml = (f'<div style="color:#c98b8b;font-size:0.75rem;margin-top:0.15rem">'
+                        f'{html_escape(_err[:150])}</div>') if _err and _status != "ok" else ""
+            _rows.append(
+                f'<div style="display:flex;align-items:flex-start;gap:0.6rem;padding:0.5rem 0;'
+                f'border-bottom:1px solid rgba(255,255,255,0.05)">'
+                f'<span style="width:9px;height:9px;border-radius:50%;background:{_dot};'
+                f'margin-top:0.35rem;flex:0 0 auto"></span>'
+                f'<div style="flex:1"><div style="display:flex;justify-content:space-between;gap:0.5rem">'
+                f'<span style="color:#dfe6f2;font-size:0.9rem;font-weight:600">{html_escape(_label)}</span>'
+                f'<span style="color:#aeb8cc;font-size:0.8rem;white-space:nowrap">{_statxt} · {_ago(_ts)}</span>'
+                f'</div>{_errhtml}</div></div>')
+        st.markdown('<div style="margin-top:0.9rem">' + "".join(_rows) + '</div>',
+                    unsafe_allow_html=True)
+    else:
+        st.caption("No refresh has run yet — click ↻ Refresh all data now.")
+
+    st.markdown('<div class="cpt-cat" style="margin-top:1.5rem">access</div>',
+                unsafe_allow_html=True)
+    _gate_on = bool(os.environ.get("BTL_REQUIRE_LOGIN")) and gmail_auth.is_configured()
+    try:
+        _members = gmail_auth.connected_members()
+    except Exception:  # noqa: BLE001
+        _members = []
+    st.markdown(
+        f"- **Login required:** {'Yes — company Google sign-in' if _gate_on else 'No — open link'}\n"
+        f"- **Google accounts connected:** {len(_members)}"
+        + (f" — {', '.join(_members)}" if _members else "") + "\n"
+        f"- **Emergency access key:** "
+        f"{'configured' if os.environ.get('BTL_ADMIN_UNLOCK') else 'not set'}")
 
 with overview_tab:
 
