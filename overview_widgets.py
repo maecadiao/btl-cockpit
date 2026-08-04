@@ -90,13 +90,36 @@ def render_tasks_card(vault_path: Path, members: list[str] | None = None) -> Non
             unsafe_allow_html=True,
         )
         for t in tasks:
-            checked = st.checkbox(
-                t.get("text", ""), value=bool(t.get("done")),
-                key=f"btl_task_{store['date']}_{name}_{t['id']}",
-            )
-            if checked != bool(t.get("done")):
-                t["done"] = checked
-                changed = True
+            _rk = f"{store['date']}_{name}_{t['id']}"
+            c1, c2, c3 = st.columns([6.4, 2.3, 0.9], gap="small")
+            with c1:
+                checked = st.checkbox(
+                    t.get("text", ""), value=bool(t.get("done")),
+                    key=f"btl_task_{_rk}",
+                )
+                if checked != bool(t.get("done")):
+                    t["done"] = checked
+                    changed = True
+            with c2:
+                _others = [m for m in members if m != name]
+                if _others:
+                    _dest = st.selectbox(
+                        "move", ["move…", *_others], key=f"btl_move_{_rk}",
+                        label_visibility="collapsed",
+                    )
+                    if _dest in _others:
+                        tasks.remove(t)
+                        _dlist = by_member.setdefault(_dest, [])
+                        t["id"] = max((x["id"] for x in _dlist), default=0) + 1
+                        _dlist.append(t)
+                        _write_tasks(vault_path, store)
+                        st.rerun()
+            with c3:
+                if st.button("✕", key=f"btl_del_{_rk}", help="Remove this task",
+                             use_container_width=True):
+                    tasks.remove(t)
+                    _write_tasks(vault_path, store)
+                    st.rerun()
         with st.form(key=f"btl_task_form_{name}", clear_on_submit=True, border=False):
             c1, c2 = st.columns([5, 1], gap="small")
             with c1:
