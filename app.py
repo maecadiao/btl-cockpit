@@ -1616,10 +1616,22 @@ hr.chapter::after { content: none; }
     padding: 0.6rem 0.9rem;
 }
 
-/* Sign-in pill in the quicknav */
-.quicknav a.qn-auth {
+/* Sign-in / signed-in / log-out pills in the quicknav */
+.quicknav a.qn-auth, .quicknav span.qn-auth {
     color: var(--fg-dim);
     letter-spacing: 0.02em;
+}
+/* the signed-in span needs the same pill shape the <a> pills get */
+.quicknav span.qn-auth {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 999px;
+    font-family: 'Outfit', 'Segoe UI', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 450;
 }
 .quicknav a.qn-signin {
     color: #f8dfae !important;
@@ -1630,8 +1642,16 @@ hr.chapter::after { content: none; }
     background: rgba(242, 181, 68, 0.14);
     box-shadow: 0 0 0 1px var(--accent);
 }
-.quicknav a.qn-signedin { color: #86c290 !important; }
-.quicknav a.qn-signedin:hover { color: #d05a5a !important; box-shadow: 0 0 0 1px rgba(208,90,90,0.5); }
+.quicknav span.qn-signedin { color: #86c290 !important; }
+.quicknav a.qn-signout {
+    color: #d7a0a0 !important;
+    box-shadow: 0 0 0 1px rgba(208, 90, 90, 0.35);
+}
+.quicknav a.qn-signout:hover {
+    color: #fff !important;
+    background: rgba(208, 90, 90, 0.18);
+    box-shadow: 0 0 0 1px rgba(208, 90, 90, 0.65);
+}
 
 /* Reveal body after PREMIUM_CSS parses — overrides pre-hide from earlier inline style. */
 body { opacity: 1; transition: opacity 0.18s ease-out; }
@@ -3957,24 +3977,28 @@ if "code" in st.query_params and "state" in st.query_params:
     if _email:
         st.session_state["member_email"] = _email
         st.session_state.pop("auth_error", None)
+        st.query_params.clear()
+        # Persist the "remember me" cookie, then let THIS run finish so the
+        # Set-Cookie component actually flushes to the browser. Reloading here
+        # would abort the write and the cookie would never be saved — which is
+        # why full-page navigations bounced back to the login screen.
         _write_session_cookie(_email)
     else:
         st.session_state["auth_error"] = _auth_err
-    st.query_params.clear()
-    st.rerun()
+        st.query_params.clear()
+        st.rerun()
 
 # Emergency access: a private ?unlock=<secret> URL that always gets an admin
 # back in, so a Google-sign-in hiccup can NEVER hard-lock the team out.
 _unlock_secret = os.environ.get("BTL_ADMIN_UNLOCK")
 if _unlock_secret and st.query_params.get("unlock") == _unlock_secret:
     st.session_state["member_email"] = "admin@bethelightdecor.com"
-    _write_session_cookie("admin@bethelightdecor.com")
     st.query_params.clear()
-    st.rerun()
+    _write_session_cookie("admin@bethelightdecor.com")  # let it flush (no rerun)
 
 # Resolve current member: session first, then the persistent cookie
 CURRENT_MEMBER = st.session_state.get("member_email")
-if not CURRENT_MEMBER:
+if not CURRENT_MEMBER and not st.session_state.pop("_just_logged_out", False):
     _ck_email = _read_session_cookie()
     if _ck_email:
         CURRENT_MEMBER = _ck_email
@@ -3983,6 +4007,14 @@ if not CURRENT_MEMBER:
 # Enforce the gate only when explicitly enabled AND sign-in is configured
 _REQUIRE_LOGIN = bool(os.environ.get("BTL_REQUIRE_LOGIN")) and gmail_auth.is_configured()
 if _REQUIRE_LOGIN and not CURRENT_MEMBER:
+    # A full-page navigation (opening a recent run, etc.) starts a fresh session
+    # where the login cookie hasn't hydrated on the first script run. Give the
+    # cookie one hydration cycle before deciding the user is logged out, so
+    # internal links don't bounce a signed-in user to the login screen.
+    if _cookie_mgr is not None and not st.session_state.get("_cookie_warmed"):
+        st.session_state["_cookie_warmed"] = True
+        time.sleep(0.4)
+        st.rerun()
     _login_err = ""
     if st.session_state.get("auth_error"):
         _login_err = f'<div class="btl-login-err">{html_escape(st.session_state.pop("auth_error"))}</div>'
@@ -4059,9 +4091,11 @@ st.markdown('<div class="cpt-header-marker"></div>', unsafe_allow_html=True)
 _action_q = st.query_params.get("action")
 if _action_q == "signout":
     st.session_state.pop("member_email", None)
-    _delete_session_cookie()
+    st.session_state["_just_logged_out"] = True   # skip the stale cookie on the next run
     CURRENT_MEMBER = None
     st.query_params.clear()
+    _delete_session_cookie()
+    time.sleep(0.4)   # let the cookie-delete flush to the browser before reloading
     st.rerun()
 elif _action_q == "terminal":
     try:
@@ -4240,8 +4274,10 @@ else:
 
 if CURRENT_MEMBER:
     _auth_html = (
-        f'<a href="?action=signout" target="_self" class="qn-auth qn-signedin" '
-        f'title="Sign out">◉ {html_escape(CURRENT_MEMBER)}</a>'
+        f'<span class="qn-auth qn-signedin" title="Signed in">'
+        f'◉ {html_escape(CURRENT_MEMBER)}</span>'
+        f'<a href="?action=signout" target="_self" class="qn-auth qn-signout" '
+        f'title="Log out">Log out</a>'
     )
 elif gmail_auth.is_configured():
     _auth_html = (
