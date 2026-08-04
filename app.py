@@ -4170,6 +4170,7 @@ elif _action_q == "pull-latest":
         _pull_scripts = [
             ("QuickBooks", "pull_qbo.py"),
             ("GoHighLevel", "pull_ghl.py"),
+            ("Sales Pipeline", "pull_ghl_pipeline.py"),
             ("Jobber", "pull_jobber.py"),
             ("Facebook / Instagram", "pull_facebook.py"),
         ]
@@ -7125,32 +7126,106 @@ with social_tab:
 with ghl_tab:
     if _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
-        st.markdown("#### GHL Pipeline", unsafe_allow_html=False)
-        _ghl_cols = st.columns(3, gap="small")
-        _ghl_csv = _read_csv_latest([
-            ("ghl", "active_leads"), ("ghl", "new_leads_7d"), ("ghl", "pipeline_value"),
-        ])
-        if _ghl_csv:
-            _ghl_live = [
-                ("Active Leads",    int(_ghl_csv.get(("ghl","active_leads"), 0)),          "contacts in pipeline"),
-                ("New Leads 7d",    int(_ghl_csv.get(("ghl","new_leads_7d"), 0)),          "new inquiries this week"),
-                ("Pipeline Value",  f"${_ghl_csv.get(('ghl','pipeline_value'), 0):,.0f}", "estimated open opportunity"),
-            ]
-            for _i, (_title, _val, _desc) in enumerate(_ghl_live):
-                with _ghl_cols[_i]:
-                    st.metric(_title, _val, help=_desc)
-            st.caption("Live data from GoHighLevel via metrics.csv")
+
+        _ghlp = None
+        try:
+            _ghlp = json.loads(
+                (VAULT_PATH / "system" / "metrics" / "ghl-pipeline.json")
+                .read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _ghlp = None
+
+        if _ghlp and not _ghlp.get("error") and _ghlp.get("by_stage"):
+            st.markdown(f"#### Sales Pipeline — {html_escape(_ghlp.get('pipeline',''))}")
+            _stale = _ghlp.get("stale", [])
+            _c = st.columns(3, gap="small")
+            with _c[0]:
+                st.metric("Open Opportunities", _ghlp.get("open_count", 0),
+                          help="Open deals in the sales pipeline")
+            with _c[1]:
+                st.metric("Pipeline Value", f"${_ghlp.get('open_value', 0):,.0f}",
+                          help="Total value of open deals")
+            with _c[2]:
+                st.metric("Needs Follow-up", len(_stale),
+                          help="Deals with 10+ days of no activity")
+
+            # ── stage breakdown bars ──────────────────────────────────────────
+            _stages = _ghlp["by_stage"]
+            _maxv = max((s["value"] for s in _stages), default=0) or 1
+            _maxc = max((s["count"] for s in _stages), default=0) or 1
+            _rows = []
+            for s in _stages:
+                if s["value"] > 0:
+                    _w, _cls, _amt = max(6, round(s["value"] / _maxv * 100)), "val", f"${s['value']:,.0f}"
+                else:
+                    _w, _cls, _amt = max(6, round(s["count"] / _maxc * 100)), "cnt", "—"
+                _age = s["avg_age"]
+                _age_cls = "hot" if _age <= 7 else ("warn" if _age <= 30 else "cold")
+                _plural = "s" if s["count"] != 1 else ""
+                _rows.append(
+                    f'<div class="ghl-stage">'
+                    f'<div class="ghl-stage-head"><span class="ghl-stage-name">{html_escape(s["stage"])}</span>'
+                    f'<span class="ghl-stage-amt">{s["count"]} deal{_plural} · {_amt}</span></div>'
+                    f'<div class="ghl-bar"><div class="ghl-bar-fill {_cls}" style="width:{_w}%"></div></div>'
+                    f'<div class="ghl-stage-sub {_age_cls}">avg {_age} days since activity</div>'
+                    f'</div>')
+            st.markdown(
+                '<style>'
+                '.ghl-stage{margin:0.55rem 0;}'
+                '.ghl-stage-head{display:flex;justify-content:space-between;font-size:0.85rem;color:#dfe6f2;margin-bottom:0.25rem;}'
+                '.ghl-stage-name{font-weight:600;}.ghl-stage-amt{color:#aeb8cc;}'
+                '.ghl-bar{height:8px;border-radius:999px;background:rgba(255,255,255,0.05);overflow:hidden;}'
+                '.ghl-bar-fill{height:100%;border-radius:999px;}'
+                '.ghl-bar-fill.val{background:linear-gradient(90deg,#f2b544,#f8dfae);}'
+                '.ghl-bar-fill.cnt{background:rgba(134,194,144,0.45);}'
+                '.ghl-stage-sub{font-size:0.72rem;margin-top:0.2rem;}'
+                '.ghl-stage-sub.hot{color:#86c290;}.ghl-stage-sub.warn{color:#d7b56a;}.ghl-stage-sub.cold{color:#d05a5a;}'
+                '</style>' + "".join(_rows),
+                unsafe_allow_html=True)
+
+            _lc, _rc = st.columns(2, gap="medium")
+            with _lc:
+                st.markdown("**⚠️ Needs follow-up** &nbsp;·&nbsp; 10+ days quiet")
+                if _stale:
+                    for o in _stale[:6]:
+                        _v = f" · ${o['value']:,.0f}" if o.get("value") else ""
+                        st.markdown(f"- **{html_escape(o['name'])}** · {html_escape(o['stage'])} "
+                                    f"· {o['days']}d{_v}")
+                else:
+                    st.caption("Nothing stale — nice work.")
+            with _rc:
+                st.markdown("**💰 Top opportunities** &nbsp;·&nbsp; by value")
+                _hv = _ghlp.get("high_value", [])
+                if _hv:
+                    for o in _hv:
+                        st.markdown(f"- **${o['value']:,.0f}** · {html_escape(o['name'])} "
+                                    f"· {html_escape(o['stage'])}")
+                else:
+                    st.caption("No valued opportunities yet.")
+
+            _upd = (_ghlp.get("updated", "")[:16].replace("T", " "))
+            st.caption(f"Live from GoHighLevel · sales pipeline only · updated {_upd} · "
+                       "click ↻ pull to refresh")
         else:
-            _ghl_fallback = [
-                ("Active Leads", getattr(_cfg, "DEMO_AUDIENCE", {}).get("active_leads", {}).get("value", 18), "contacts in pipeline"),
-                ("New Leads 7d", 5, "new inquiries this week"),
-                ("Pipeline Value", "$42,500", "estimated open opportunity"),
-            ]
-            for _i, (_title, _val, _desc) in enumerate(_ghl_fallback):
-                with _ghl_cols[_i]:
-                    st.metric(_title, _val, help=_desc)
-            st.markdown("---")
-            st.caption("🟡 No GHL data yet — click ↻ Pull to load live data")
+            # Fallback: the old metrics.csv summary (or demo) until the first pull
+            st.markdown("#### GHL Pipeline")
+            _ghl_cols = st.columns(3, gap="small")
+            _ghl_csv = _read_csv_latest([
+                ("ghl", "active_leads"), ("ghl", "new_leads_7d"), ("ghl", "pipeline_value"),
+            ])
+            if _ghl_csv:
+                _ghl_live = [
+                    ("Active Leads",    int(_ghl_csv.get(("ghl","active_leads"), 0)),          "contacts in pipeline"),
+                    ("New Leads 7d",    int(_ghl_csv.get(("ghl","new_leads_7d"), 0)),          "new inquiries this week"),
+                    ("Pipeline Value",  f"${_ghl_csv.get(('ghl','pipeline_value'), 0):,.0f}", "estimated open opportunity"),
+                ]
+                for _i, (_title, _val, _desc) in enumerate(_ghl_live):
+                    with _ghl_cols[_i]:
+                        st.metric(_title, _val, help=_desc)
+                st.caption("Summary from metrics.csv — click ↻ pull for the full pipeline view")
+            else:
+                st.markdown("---")
+                st.caption("🟡 No GHL data yet — click ↻ Pull to load live data")
 
 with jobber_tab:
     if _layout_v == "v2":
