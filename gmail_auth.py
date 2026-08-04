@@ -185,6 +185,12 @@ def _flow(state: str | None = None):
     }
     flow = Flow.from_client_config(cfg, scopes=SCOPES, state=state)
     flow.redirect_uri = _redirect_uri()
+    # Disable PKCE: the sign-in link and the callback run statelessly (no shared
+    # server session), so the one-time code_verifier can't survive the round-trip
+    # and Google rejects the exchange with "Missing code verifier". We're a
+    # confidential client (client_secret), so PKCE isn't needed.
+    flow.autogenerate_code_verifier = False
+    flow.code_verifier = None
     return flow
 
 
