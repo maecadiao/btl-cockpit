@@ -1616,22 +1616,10 @@ hr.chapter::after { content: none; }
     padding: 0.6rem 0.9rem;
 }
 
-/* Sign-in / signed-in / log-out pills in the quicknav */
-.quicknav a.qn-auth, .quicknav span.qn-auth {
+/* Sign-in pill in the quicknav */
+.quicknav a.qn-auth {
     color: var(--fg-dim);
     letter-spacing: 0.02em;
-}
-/* the signed-in span needs the same pill shape the <a> pills get */
-.quicknav span.qn-auth {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.85rem;
-    background: rgba(255, 255, 255, 0.02);
-    border-radius: 999px;
-    font-family: 'Outfit', 'Segoe UI', sans-serif;
-    font-size: 0.78rem;
-    font-weight: 450;
 }
 .quicknav a.qn-signin {
     color: #f8dfae !important;
@@ -1642,15 +1630,61 @@ hr.chapter::after { content: none; }
     background: rgba(242, 181, 68, 0.14);
     box-shadow: 0 0 0 1px var(--accent);
 }
-.quicknav span.qn-signedin { color: #86c290 !important; }
-.quicknav a.qn-signout {
-    color: #d7a0a0 !important;
-    box-shadow: 0 0 0 1px rgba(208, 90, 90, 0.35);
+
+/* Signed-in account chip: a native <details> disclosure. The email is the
+   clickable chip; Log out only appears (as a dropdown) once it's clicked. */
+.quicknav details.qn-account {
+    position: relative;
+    display: inline-block;
 }
-.quicknav a.qn-signout:hover {
+.quicknav details.qn-account summary.qn-auth {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 999px;
+    font-family: 'Outfit', 'Segoe UI', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 450;
+    color: #86c290 !important;
+    letter-spacing: 0.02em;
+}
+.quicknav details.qn-account summary.qn-auth::-webkit-details-marker { display: none; }
+.quicknav details.qn-account summary.qn-auth::marker { content: ""; }
+.quicknav details.qn-account summary.qn-auth:hover {
+    background: rgba(134, 194, 144, 0.10);
+    box-shadow: 0 0 0 1px rgba(134, 194, 144, 0.35);
+}
+.quicknav details.qn-account[open] summary.qn-auth {
+    box-shadow: 0 0 0 1px rgba(134, 194, 144, 0.45);
+}
+.qn-account-menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 50;
+    background: #141d31;
+    border-radius: 0.6rem;
+    padding: 0.3rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(168, 190, 225, 0.12);
+    min-width: 8rem;
+}
+.qn-account-menu .qn-signout-item {
+    display: block;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.4rem;
+    font-family: 'Outfit', 'Segoe UI', sans-serif;
+    font-size: 0.8rem;
+    color: #d7a0a0 !important;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.qn-account-menu .qn-signout-item:hover {
     color: #fff !important;
-    background: rgba(208, 90, 90, 0.18);
-    box-shadow: 0 0 0 1px rgba(208, 90, 90, 0.65);
+    background: rgba(208, 90, 90, 0.22);
 }
 
 /* Reveal body after PREMIUM_CSS parses — overrides pre-hide from earlier inline style. */
@@ -4274,10 +4308,13 @@ else:
 
 if CURRENT_MEMBER:
     _auth_html = (
-        f'<span class="qn-auth qn-signedin" title="Signed in">'
-        f'◉ {html_escape(CURRENT_MEMBER)}</span>'
-        f'<a href="?action=signout" target="_self" class="qn-auth qn-signout" '
-        f'title="Log out">Log out</a>'
+        f'<details class="qn-account">'
+        f'<summary class="qn-auth qn-signedin" title="Account">'
+        f'◉ {html_escape(CURRENT_MEMBER)}</summary>'
+        f'<div class="qn-account-menu">'
+        f'<a href="?action=signout" target="_self" class="qn-signout-item">Log out</a>'
+        f'</div>'
+        f'</details>'
     )
 elif gmail_auth.is_configured():
     _auth_html = (
