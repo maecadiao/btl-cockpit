@@ -334,20 +334,39 @@ def unread_block(email: str) -> tuple[str | None, str | None]:
 # ── huddle: latest Google Meet recording / notes email ────────────────────────
 
 def _message_text(service, msg_id: str) -> str:
-    """Best-effort plain-text body of a message."""
+    """Best-effort readable body of a message. Prefers text/plain; falls back to
+    HTML with tags stripped (Gemini notes emails are often HTML-only)."""
+    import html as _html
+    import re
     md = service.users().messages().get(userId="me", id=msg_id, format="full").execute()
 
-    def _walk(part) -> str:
-        out = ""
-        body = part.get("body", {}) or {}
-        if part.get("mimeType") == "text/plain" and body.get("data"):
-            out += base64.urlsafe_b64decode(body["data"]).decode("utf-8", "replace")
-        for p in (part.get("parts") or []):
-            out += _walk(p)
-        return out
+    plain, htmls = [], []
 
-    text = _walk(md.get("payload", {})) or md.get("snippet", "")
-    return text[:4000]
+    def _walk(part) -> None:
+        data = (part.get("body") or {}).get("data")
+        if data:
+            decoded = base64.urlsafe_b64decode(data).decode("utf-8", "replace")
+            mt = part.get("mimeType", "")
+            if mt == "text/plain":
+                plain.append(decoded)
+            elif mt == "text/html":
+                htmls.append(decoded)
+        for p in (part.get("parts") or []):
+            _walk(p)
+
+    _walk(md.get("payload", {}))
+    text = "\n".join(plain).strip()
+    if not text and htmls:
+        raw = "\n".join(htmls)
+        raw = re.sub(r"(?is)<(script|style|head).*?</\1>", " ", raw)
+        raw = re.sub(r"(?is)<(br|/p|/div|/li|/tr)\s*/?>", "\n", raw)
+        raw = re.sub(r"(?s)<[^>]+>", " ", raw)
+        text = _html.unescape(raw)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n[ \t]*\n\s*", "\n\n", text).strip()
+    if not text:
+        text = md.get("snippet", "")
+    return text[:6000]
 
 
 def huddle_block(email: str) -> tuple[str | None, str | None]:
@@ -359,16 +378,24 @@ def huddle_block(email: str) -> tuple[str | None, str | None]:
         from googleapiclient.discovery import build
         creds = _member_creds(email)
         service = build("gmail", "v1", credentials=creds, cache_discovery=False)
-        query = ('newer_than:2d ('
-                 'from:meet-recordings-noreply@google.com OR '
-                 'from:drive-shares-dm-noreply@google.com OR '
-                 'subject:(notes) OR subject:(recording) OR subject:(huddle) OR '
-                 '"Gemini" OR "Google Meet" OR "meeting notes")')
-        listing = service.users().messages().list(
-            userId="me", q=query, maxResults=5).execute()
-        msgs = listing.get("messages", [])
+        # Tiered search — most specific first, so an unrelated (and possibly
+        # newer) Google Drive share request can never be mistaken for the huddle.
+        # The Gemini notes email subject is literally 'Notes: "Daily Huddle…"'.
+        queries = [
+            'newer_than:4d subject:huddle',
+            'newer_than:4d (subject:(notes) huddle)',
+            'newer_than:4d ("Daily Huddle" OR "huddle notes")',
+            'newer_than:2d (from:meet-recordings-noreply@google.com OR subject:(recording))',
+        ]
+        msgs = []
+        for _q in queries:
+            listing = service.users().messages().list(
+                userId="me", q=_q, maxResults=5).execute()
+            msgs = listing.get("messages", [])
+            if msgs:
+                break
         if not msgs:
-            return None, ("No Google Meet recording/notes email found in the last 2 days — "
+            return None, ("No 'Daily Huddle' notes email found in the last few days — "
                           "brief from calendar + pipeline only.")
         top = msgs[0]["id"]
         meta = service.users().messages().get(
