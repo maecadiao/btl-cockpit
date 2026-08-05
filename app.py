@@ -6100,7 +6100,10 @@ def _btl_quick_run(label: str):
         if not member:
             st.session_state["inbox_needs_signin"] = True
             return
-        parts = []
+        _now_cst = datetime.now(ZoneInfo("America/Chicago"))
+        parts = [f"=== TODAY ===\nToday is {_now_cst:%A, %B %d, %Y} "
+                 f"({_now_cst:%I:%M %p} Central Time). Use THIS exact date in the "
+                 f"briefing header — do not infer it from anything else."]
         _huddle, _hnote = gmail_auth.huddle_block(member)
         if _huddle:
             parts.append(_huddle)
