@@ -26,16 +26,23 @@ def _tasks_path(vault_path: Path) -> Path:
 
 
 def _read_tasks(vault_path: Path) -> dict:
-    """Per-member store: {date, members: {name: [{id,text,done}, ...]}}. Resets
-    daily. Migrates the old single-list shape by starting fresh for the day."""
+    """Per-member store: {date, members: {name: [{id,text,done,added}, ...]}}.
+    Tasks PERSIST across days so overdue items stay visible; only completed items
+    from previous days are cleared out. Migrates the old single-list shape."""
     today = date.today().isoformat()
     try:
         store = json.loads(_tasks_path(vault_path).read_text(encoding="utf-8"))
-        if store.get("date") != today or "members" not in store:
-            return {"date": today, "members": {}}
-        return store
     except (OSError, json.JSONDecodeError):
         return {"date": today, "members": {}}
+    if "members" not in store:            # old single-list format → start fresh
+        return {"date": today, "members": {}}
+    for name, lst in list(store.get("members", {}).items()):
+        store["members"][name] = [
+            t for t in lst
+            if not (t.get("done") and (t.get("added") or today) < today)
+        ]
+    store["date"] = today
+    return store
 
 
 def _write_tasks(vault_path: Path, store: dict) -> None:
@@ -57,7 +64,8 @@ def assign_tasks(vault_path: Path, assignments: dict) -> int:
             tx = (tx or "").strip()
             if tx and tx.lower() not in existing:
                 nid = max((t["id"] for t in lst), default=0) + 1
-                lst.append({"id": nid, "text": tx, "done": False, "src": "briefing"})
+                lst.append({"id": nid, "text": tx, "done": False, "src": "briefing",
+                            "added": date.today().isoformat()})
                 existing.add(tx.lower())
                 added += 1
     if added:
@@ -100,6 +108,21 @@ def render_tasks_card(vault_path: Path, members: list[str] | None = None) -> Non
                 if checked != bool(t.get("done")):
                     t["done"] = checked
                     changed = True
+                _added = t.get("added")
+                if _added:
+                    try:
+                        _ad = date.fromisoformat(_added)
+                        _od = (date.today() - _ad).days
+                    except ValueError:
+                        _ad = _od = None
+                    if _ad is not None:
+                        if _od > 0 and not t.get("done"):
+                            _badge = (f'<span style="color:#d78a8a;font-size:0.7rem">'
+                                      f'⚠ added {_ad:%b} {_ad.day} · {_od}d overdue</span>')
+                        else:
+                            _badge = (f'<span style="color:#7d8aa3;font-size:0.7rem">'
+                                      f'added {_ad:%b} {_ad.day}</span>')
+                        st.markdown(_badge, unsafe_allow_html=True)
             with c2:
                 _others = [m for m in members if m != name]
                 if _others:
@@ -131,7 +154,8 @@ def render_tasks_card(vault_path: Path, members: list[str] | None = None) -> Non
                 submitted = st.form_submit_button("＋", use_container_width=True)
             if submitted and new_text.strip():
                 next_id = max((t["id"] for t in tasks), default=0) + 1
-                tasks.append({"id": next_id, "text": new_text.strip(), "done": False})
+                tasks.append({"id": next_id, "text": new_text.strip(), "done": False,
+                              "added": date.today().isoformat()})
                 _write_tasks(vault_path, store)
                 st.rerun()
     if changed:
