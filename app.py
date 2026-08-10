@@ -4206,9 +4206,27 @@ if _REQUIRE_LOGIN and not CURRENT_MEMBER:
 _OWNER_SET = {o.lower() for o in OWNERS}
 IS_OWNER = (not CURRENT_MEMBER) or (CURRENT_MEMBER.lower() in _OWNER_SET)
 CAN_SEE_MONEY = IS_OWNER
-# Map the signed-in email to the person's first name (for private Daily Tasks).
+# Map the signed-in email to the person's first name (for private Daily Tasks):
+#   1) explicit map in config.TEAM (admin@ = Mae, info@ = Hunter), then
+#   2) auto-match the email's local part to a team first name (shella@ -> Shella),
+# so new members are recognized from their login alone — no email collection.
 _EMAIL_TO_NAME = {m["email"].lower(): m["name"] for m in TEAM if m.get("email")}
-MY_NAME = _EMAIL_TO_NAME.get((CURRENT_MEMBER or "").lower())
+
+
+def _resolve_my_name(email: str | None) -> str | None:
+    if not email:
+        return None
+    e = email.lower()
+    if e in _EMAIL_TO_NAME:
+        return _EMAIL_TO_NAME[e]
+    local = e.split("@", 1)[0]
+    for _m in TEAM_MEMBERS:
+        if _m.lower() == local:
+            return _m
+    return None
+
+
+MY_NAME = _resolve_my_name(CURRENT_MEMBER)
 # Skills visible to this person (Staff can't see money skills).
 VISIBLE_SKILLS = [s for s in SKILLS if CAN_SEE_MONEY or s["label"] not in MONEY_SKILLS]
 
