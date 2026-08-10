@@ -3250,20 +3250,32 @@ def _to_int(v):
         return 0
 
 
-def _five_h_run_output_tokens() -> int:
-    """Output tokens from skill runs in the last 5 hours. On Railway there are no
-    local Claude CLI sessions, so this is the cockpit's real 'token burn' — it
-    moves whenever a skill runs. Falls back to 0 when nothing ran."""
-    cutoff = datetime.now() - timedelta(hours=5)
-    total = 0
-    for r in scan_runs(1):
+def _range_token_usage(start: datetime | None, end: datetime | None) -> dict:
+    """Sum tokens actually used by skill runs within a date range, read from the
+    saved run files (each stores tokens_in / tokens_out). This is the real
+    'token burn' on the cloud — it moves whenever the team runs skills.
+    start/end are naive local (Central) datetimes; None means unbounded."""
+    if start is not None and start.tzinfo:
+        start = start.replace(tzinfo=None)
+    if end is not None and end.tzinfo:
+        end = end.replace(tzinfo=None)
+    tin = tout = runs = 0
+    for r in scan_runs(3650):  # wide enough to cover the "All" range
+        raw = (r.get("time") or "")[:19] or (r.get("date") or "")
         try:
-            t = datetime.fromisoformat((r.get("time") or "")[:19])
+            dt = datetime.fromisoformat(raw)
         except (ValueError, TypeError):
             continue
-        if t >= cutoff:
-            total += _to_int(r.get("tokens_out"))
-    return total
+        if start and dt < start:
+            continue
+        if end and dt > end:
+            continue
+        _i, _o = _to_int(r.get("tokens_in")), _to_int(r.get("tokens_out"))
+        if _i or _o:
+            tin += _i
+            tout += _o
+            runs += 1
+    return {"input": tin, "output": tout, "total": tin + tout, "runs": runs}
 
 
 def calc_metrics() -> dict:
@@ -4799,86 +4811,60 @@ def read_last_pull_ts() -> str | None:
         return None
 
 
-def render_tokenburn_meter(used: int, budget: int, reset_at: float | None, last_pull_ts: str | None) -> str:
-    """5h window TokenBurn marquee. Returns HTML string mirroring Obsidian cockpit component."""
-    pct = min(100.0, (used / budget * 100.0) if budget else 0.0)
+_TOKEN_COST = {"in_per_m": 3.0, "out_per_m": 15.0}  # Claude Sonnet rates ($/million)
 
-    # Projection: linear extrapolation of current burn to end-of-window.
-    proj_pct = pct
-    if reset_at:
-        try:
-            reset_in_sec = max(0, int(reset_at - time.time()))
-            window_sec = 5 * 3600
-            elapsed_sec = max(60, window_sec - reset_in_sec)
-            burn_per_sec = used / elapsed_sec if elapsed_sec else 0
-            projected_total = used + (burn_per_sec * reset_in_sec)
-            if budget:
-                proj_pct = min(100.0, projected_total / budget * 100.0)
-        except Exception:
-            pass
 
-    tone_class = "critical" if pct >= 90 else ("warn" if pct >= 70 else "")
+def render_tokenburn_meter(usage: dict, range_label: str, last_pull_ts: str | None) -> str:
+    """Actual token usage over the selected range, summed from saved skill runs
+    (each run stores tokens_in / tokens_out). Replaces the old 5h-window meter,
+    which read local Claude-CLI logs that don't exist on the cloud server."""
+    total = int(usage.get("total", 0))
+    tin = int(usage.get("input", 0))
+    tout = int(usage.get("output", 0))
+    runs = int(usage.get("runs", 0))
+    est_cost = (tin / 1_000_000 * _TOKEN_COST["in_per_m"]
+                + tout / 1_000_000 * _TOKEN_COST["out_per_m"])
 
     pull_age_html = "—"
     pull_dt = _parse_iso(last_pull_ts or "")
     if pull_dt:
         try:
             age = int((datetime.now(pull_dt.tzinfo) - pull_dt).total_seconds())
-            pull_age_html = f"last pull {fmt_ago(max(0, age))} ago"
-        except Exception:
+            pull_age_html = f"updated {fmt_ago(max(0, age))} ago"
+        except Exception:  # noqa: BLE001
             pass
 
-    pct_int = int(round(pct))
-    proj_left = pct
-    proj_width = max(0.0, proj_pct - pct)
+    rl = html_escape((range_label or "range").strip())
+    total_h, in_h, out_h = fmt_tokens(total), fmt_tokens(tin), fmt_tokens(tout)
 
-    used_h = fmt_tokens(int(used))
-    budget_h = fmt_tokens(int(budget))
-    projected_total = int((proj_pct / 100.0) * budget) if budget else 0
-    projected_h = fmt_tokens(projected_total)
+    body = (
+        '<div style="display:flex;align-items:baseline;gap:0.9rem;flex-wrap:wrap;padding:0.55rem 0 0.15rem">'
+        f'<span style="font-size:2.5rem;font-weight:800;letter-spacing:-0.02em;color:var(--accent,#f2b544);'
+        f'font-variant-numeric:tabular-nums;line-height:1">{total_h}</span>'
+        f'<span style="color:#8593ab;font-size:0.95rem">tokens used &middot; {rl}</span>'
+        '</div>'
+        '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;color:#aeb8cc;font-size:0.85rem;padding-top:0.25rem;'
+        'font-variant-numeric:tabular-nums">'
+        f'<span><span style="color:#86c290">in</span> {in_h}</span>'
+        f'<span><span style="color:#f8dfae">out</span> {out_h}</span>'
+        f'<span><span style="color:#8593ab">runs</span> {runs}</span>'
+        f'<span style="color:#8593ab">~${est_cost:,.2f} est.</span>'
+        '</div>'
+    )
+    if total == 0:
+        body += ('<div style="color:#8593ab;font-size:0.78rem;padding-top:0.5rem">'
+                 'No skill runs in this range yet — run a skill, or widen the range above.</div>')
 
-    # Tick marks every 25% of budget — keeps scale legible.
-    ticks = []
-    for frac in (0, 0.25, 0.5, 0.75, 1.0):
-        ticks.append(fmt_tokens(int(budget * frac)) if budget else "—")
-
-    wrap_class = f"v2-tb-wrap {tone_class}".strip()
     return (
-        f'<div class="{wrap_class}">'
-        # HUD corner brackets (4 explicit spans, animate on .critical)
-        '<span class="v2-tb-corner tl"></span>'
-        '<span class="v2-tb-corner tr"></span>'
-        '<span class="v2-tb-corner bl"></span>'
-        '<span class="v2-tb-corner br"></span>'
-        # Header
+        '<div class="v2-tb-wrap">'
+        '<span class="v2-tb-corner tl"></span><span class="v2-tb-corner tr"></span>'
+        '<span class="v2-tb-corner bl"></span><span class="v2-tb-corner br"></span>'
         '<div class="v2-tb-head">'
-        '<span class="v2-tb-title">§ TOKEN BURN · 5H WINDOW</span>'
+        '<span class="v2-tb-title">§ TOKEN USAGE</span>'
         '<span class="v2-tb-live"><span class="v2-tb-live-dot"></span>LIVE</span>'
         f'<span class="v2-tb-meta">{pull_age_html}</span>'
         '</div>'
-        # Meter grid: pct | bar | counts
-        '<div class="v2-tb-meter">'
-        '<div class="v2-tb-pct">'
-        f'<span class="v2-tb-pct-num">{pct_int}</span>'
-        '<span class="v2-tb-pct-unit">%</span>'
-        '</div>'
-        '<div class="v2-tb-bar-wrap">'
-        '<div class="v2-tb-track">'
-        f'<div class="v2-tb-fill" style="--tb-target:{pct:.1f}%;width:{pct:.1f}%"></div>'
-        f'<div class="v2-tb-proj" style="left:{proj_left:.1f}%;width:{proj_width:.1f}%"></div>'
-        f'<div class="v2-tb-comet" style="--tb-target:{pct:.1f}%;left:max(0px, calc({pct:.1f}% - 80px));width:min(80px, {pct:.1f}%)"></div>'
-        f'<div class="v2-tb-endpoint" style="--tb-target:{pct:.1f}%;left:{pct:.1f}%"></div>'
-        '<div class="v2-tb-scan"></div>'
-        '</div>'
-        '<div class="v2-tb-ticks">'
-        + "".join(f"<span>{t}</span>" for t in ticks) +
-        '</div>'
-        '</div>'
-        '<div class="v2-tb-counts">'
-        f'<div><span class="v2-tb-used">{used_h}</span> / {budget_h}</div>'
-        f'<div class="v2-tb-proj-label">→ {projected_h} projected</div>'
-        '</div>'
-        '</div>'
+        + body +
         '</div>'
     )
 
@@ -5864,10 +5850,10 @@ elif not getattr(_cfg, "DEMO_MODE", False):
     if _jsonl_usage["output"] > 0:
         five_h_tokens = _jsonl_usage["output"]
 # Cloud fallback: no local Claude CLI sessions exist on Railway, so the above
-# all resolve to 0. Use the tokens burned by skill runs in the last 5h instead,
-# so the meter actually moves when the team runs skills.
+# all resolve to 0. Use the tokens burned by skill runs (last 5h) instead.
 if five_h_tokens == 0:
-    five_h_tokens = _five_h_run_output_tokens()
+    _u5 = _range_token_usage(datetime.now() - timedelta(hours=5), None)
+    five_h_tokens = _u5["total"]
 week_tokens = usage["weekly"]["total"]
 routines_today = usage["today"]["routines"]
 today_runs = usage["today"]["runs"]
@@ -5915,10 +5901,9 @@ with overview_tab:
     if _enabled_cards.get("tokenburn", True):
         st.markdown(
             render_tokenburn_meter(
-                used=five_h_tokens,
-                budget=LIMITS["five_hour_tokens"],
-                reset_at=five_h_reset,
-                last_pull_ts=read_last_pull_ts(),
+                _range_token_usage(_range_start, _range_end),
+                _range_label,
+                read_last_pull_ts(),
             ),
             unsafe_allow_html=True,
         )
