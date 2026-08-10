@@ -73,91 +73,91 @@ def assign_tasks(vault_path: Path, assignments: dict) -> int:
     return added
 
 
-def render_tasks_card(vault_path: Path, members: list[str] | None = None) -> None:
-    """DAILY TASKS card: one checklist section per team member, persisted on the
-    shared volume so the whole team sees the same board."""
-    members = members or []
+def render_tasks_card(vault_path: Path, my_name: str | None,
+                      all_members: list[str] | None = None) -> None:
+    """DAILY TASKS card — PRIVATE: each person sees only their own list. The
+    Daily Briefing still assigns to everyone; each person just sees their own.
+    `my_name` is the signed-in person; `all_members` are hand-off targets."""
+    all_members = all_members or []
     store = _read_tasks(vault_path)
     by_member = store.setdefault("members", {})
 
-    all_tasks = [t for m in members for t in by_member.get(m, [])]
-    done_n = sum(1 for t in all_tasks if t.get("done"))
+    if not my_name:
+        st.markdown(
+            '<div class="btl-panel-head"><span>Daily tasks</span></div>'
+            '<div class="btl-tasks-empty">Your task list will appear here once your '
+            'login is linked to your name.</div>', unsafe_allow_html=True)
+        return
+
+    tasks = by_member.setdefault(my_name, [])
+    done_n = sum(1 for t in tasks if t.get("done"))
     st.markdown(
-        f'<div class="btl-panel-head"><span>Daily tasks</span>'
-        f'<span class="btl-panel-meta">{done_n}/{len(all_tasks)}</span></div>',
+        f'<div class="btl-panel-head"><span>My tasks</span>'
+        f'<span class="btl-panel-meta">{done_n}/{len(tasks)}</span></div>',
         unsafe_allow_html=True,
     )
+    if not tasks:
+        st.markdown('<div class="btl-tasks-empty">&gt; nothing yet — add a task below</div>',
+                    unsafe_allow_html=True)
 
     changed = False
-    for name in members:
-        tasks = by_member.setdefault(name, [])
-        m_done = sum(1 for t in tasks if t.get("done"))
-        st.markdown(
-            f'<div class="btl-tasks-member">{name}'
-            f'<span class="btl-tasks-member-meta">{m_done}/{len(tasks)}</span></div>',
-            unsafe_allow_html=True,
-        )
-        for t in tasks:
-            _rk = f"{store['date']}_{name}_{t['id']}"
-            c1, c2, c3 = st.columns([6.4, 2.3, 0.9], gap="small")
-            with c1:
-                checked = st.checkbox(
-                    t.get("text", ""), value=bool(t.get("done")),
-                    key=f"btl_task_{_rk}",
-                )
-                if checked != bool(t.get("done")):
-                    t["done"] = checked
-                    changed = True
-                _added = t.get("added")
-                if _added:
-                    try:
-                        _ad = date.fromisoformat(_added)
-                        _od = (date.today() - _ad).days
-                    except ValueError:
-                        _ad = _od = None
-                    if _ad is not None:
-                        if _od > 0 and not t.get("done"):
-                            _badge = (f'<span style="color:#d78a8a;font-size:0.7rem">'
-                                      f'⚠ added {_ad:%b} {_ad.day} · {_od}d overdue</span>')
-                        else:
-                            _badge = (f'<span style="color:#7d8aa3;font-size:0.7rem">'
-                                      f'added {_ad:%b} {_ad.day}</span>')
-                        st.markdown(_badge, unsafe_allow_html=True)
-            with c2:
-                _others = [m for m in members if m != name]
-                if _others:
-                    _dest = st.selectbox(
-                        "move", ["move…", *_others], key=f"btl_move_{_rk}",
-                        label_visibility="collapsed",
-                    )
-                    if _dest in _others:
-                        tasks.remove(t)
-                        _dlist = by_member.setdefault(_dest, [])
-                        t["id"] = max((x["id"] for x in _dlist), default=0) + 1
-                        _dlist.append(t)
-                        _write_tasks(vault_path, store)
-                        st.rerun()
-            with c3:
-                if st.button("✕", key=f"btl_del_{_rk}", help="Remove this task",
-                             use_container_width=True):
+    for t in tasks:
+        _rk = f"{store['date']}_{my_name}_{t['id']}"
+        c1, c2, c3 = st.columns([6.4, 2.3, 0.9], gap="small")
+        with c1:
+            checked = st.checkbox(t.get("text", ""), value=bool(t.get("done")),
+                                  key=f"btl_task_{_rk}")
+            if checked != bool(t.get("done")):
+                t["done"] = checked
+                changed = True
+            _added = t.get("added")
+            if _added:
+                try:
+                    _ad = date.fromisoformat(_added)
+                    _od = (date.today() - _ad).days
+                except ValueError:
+                    _ad = _od = None
+                if _ad is not None:
+                    if _od > 0 and not t.get("done"):
+                        _badge = (f'<span style="color:#d78a8a;font-size:0.7rem">'
+                                  f'⚠ added {_ad:%b} {_ad.day} · {_od}d overdue</span>')
+                    else:
+                        _badge = (f'<span style="color:#7d8aa3;font-size:0.7rem">'
+                                  f'added {_ad:%b} {_ad.day}</span>')
+                    st.markdown(_badge, unsafe_allow_html=True)
+        with c2:
+            _others = [m for m in all_members if m != my_name]
+            if _others:
+                _dest = st.selectbox("hand off", ["hand off…", *_others],
+                                     key=f"btl_move_{_rk}", label_visibility="collapsed")
+                if _dest in _others:
                     tasks.remove(t)
+                    _dlist = by_member.setdefault(_dest, [])
+                    t["id"] = max((x["id"] for x in _dlist), default=0) + 1
+                    _dlist.append(t)
                     _write_tasks(vault_path, store)
                     st.rerun()
-        with st.form(key=f"btl_task_form_{name}", clear_on_submit=True, border=False):
-            c1, c2 = st.columns([5, 1], gap="small")
-            with c1:
-                new_text = st.text_input(
-                    f"new task for {name}", key=f"btl_task_new_{name}",
-                    placeholder=f"add task for {name}…", label_visibility="collapsed",
-                )
-            with c2:
-                submitted = st.form_submit_button("＋", use_container_width=True)
-            if submitted and new_text.strip():
-                next_id = max((t["id"] for t in tasks), default=0) + 1
-                tasks.append({"id": next_id, "text": new_text.strip(), "done": False,
-                              "added": date.today().isoformat()})
+        with c3:
+            if st.button("✕", key=f"btl_del_{_rk}", help="Remove this task",
+                         use_container_width=True):
+                tasks.remove(t)
                 _write_tasks(vault_path, store)
                 st.rerun()
+    with st.form(key=f"btl_task_form_{my_name}", clear_on_submit=True, border=False):
+        c1, c2 = st.columns([5, 1], gap="small")
+        with c1:
+            new_text = st.text_input("new task", key=f"btl_task_new_{my_name}",
+                                     placeholder="add a task…", label_visibility="collapsed")
+        with c2:
+            submitted = st.form_submit_button("＋", use_container_width=True)
+        if submitted and new_text.strip():
+            next_id = max((t["id"] for t in tasks), default=0) + 1
+            tasks.append({"id": next_id, "text": new_text.strip(), "done": False,
+                          "added": date.today().isoformat()})
+            _write_tasks(vault_path, store)
+            st.rerun()
+    if changed:
+        _write_tasks(vault_path, store)
     if changed:
         _write_tasks(vault_path, store)
 
@@ -220,9 +220,9 @@ _JOBBER_URL = "https://secure.getjobber.com"
 
 OVERVIEW_CARDS = [
     {"mode": "snapshot", "source": "qbo", "metric": "ar_balance",
-     "label": "Money Owed to Us", "format": "currency", "link": _QBO_URL},
-    {"mode": "range", "series": "revenue",  "label": "Revenue",   "format": "currency", "link": _QBO_URL},
-    {"mode": "range", "series": "spending", "label": "Spending",  "format": "currency", "link": _QBO_URL},
+     "label": "Money Owed to Us", "format": "currency", "link": _QBO_URL, "money": True},
+    {"mode": "range", "series": "revenue",  "label": "Revenue",   "format": "currency", "link": _QBO_URL, "money": True},
+    {"mode": "range", "series": "spending", "label": "Spending",  "format": "currency", "link": _QBO_URL, "money": True},
     {"mode": "range", "series": "leads",    "label": "New Leads", "format": "integer",  "link": _GHL_URL},
     {"mode": "range", "series": "jobs",     "label": "Jobs",      "format": "integer",  "link": _JOBBER_URL},
 ]

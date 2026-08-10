@@ -41,6 +41,9 @@ from config import (
     SKILLS,
     SKILL_CATEGORY_ORDER,
     TEAM_MEMBERS,
+    TEAM,
+    OWNERS,
+    MONEY_SKILLS,
     RUN_TIMEOUT_SEC,
     PERMISSION_MODE,
     LIMITS,
@@ -3115,11 +3118,47 @@ def open_claude_terminal() -> None:
         )
 
 
-def list_recent_runs(limit: int = 10):
+def _run_visible_to(fm: dict, member: str | None) -> bool:
+    """A run is visible if you own it, it's shared with the team, or it has no
+    owner (legacy / system runs like scheduled pulls stay visible to everyone)."""
+    owner = (fm.get("owner") or "").strip()
+    if not owner:
+        return True
+    if member and owner.lower() == member.strip().lower():
+        return True
+    return str(fm.get("shared", "")).strip().lower() == "true"
+
+
+def _set_run_shared(path: Path, shared: bool) -> None:
+    """Flip a run's `shared:` frontmatter flag (share with team / make private)."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    val = "True" if shared else "False"
+    if re.search(r"(?m)^shared:.*$", text):
+        text = re.sub(r"(?m)^shared:.*$", f"shared: {val}", text, count=1)
+    else:
+        text = re.sub(r"^---\n", f"---\nshared: {val}\n", text, count=1)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+
+
+def list_recent_runs(limit: int = 10, member: str | None = None):
     if not RUNS_DIR.exists():
         return []
     files = sorted(RUNS_DIR.glob("*/*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return files[:limit]
+    if member is None:
+        return files[:limit]
+    out = []
+    for f in files:
+        if _run_visible_to(_parse_frontmatter(f), member):
+            out.append(f)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def list_awaiting_approvals():
@@ -4012,6 +4051,9 @@ def finalize_run_if_done(label: str, prompt: str):
             "tokens_in": RT.get("tokens_in"),
             "tokens_out": RT.get("tokens_out"),
             "phases": ", ".join(RT.get("phases", [])) or None,
+            # Ownership: this run belongs to whoever ran it, private by default.
+            "owner": st.session_state.get("member_email") or "",
+            "shared": False,
         }
         saved = save_run_output(label, prompt, output, meta=meta)
         st.session_state.last_saved_path = str(saved)
@@ -4157,6 +4199,20 @@ if _REQUIRE_LOGIN and not CURRENT_MEMBER:
     st.stop()
 
 
+# ── Role & identity ───────────────────────────────────────────────────────────
+#   Owners (admins) see everything incl. financials; everyone else is Staff.
+#   If login isn't enforced (gate off / no member), fail OPEN to full access so
+#   the open/admin view never hides data.
+_OWNER_SET = {o.lower() for o in OWNERS}
+IS_OWNER = (not CURRENT_MEMBER) or (CURRENT_MEMBER.lower() in _OWNER_SET)
+CAN_SEE_MONEY = IS_OWNER
+# Map the signed-in email to the person's first name (for private Daily Tasks).
+_EMAIL_TO_NAME = {m["email"].lower(): m["name"] for m in TEAM if m.get("email")}
+MY_NAME = _EMAIL_TO_NAME.get((CURRENT_MEMBER or "").lower())
+# Skills visible to this person (Staff can't see money skills).
+VISIBLE_SKILLS = [s for s in SKILLS if CAN_SEE_MONEY or s["label"] not in MONEY_SKILLS]
+
+
 # ═══════════════════════════════════════════════════════════
 # FIRST-RUN WIZARD
 # ═══════════════════════════════════════════════════════════
@@ -4276,7 +4332,11 @@ if _view_q in ("runs", "drafts"):
     _files = sorted(
         _folder_dir.glob("**/*.md") if _folder_dir.exists() else [],
         key=lambda p: p.stat().st_mtime, reverse=True
-    )[:50]
+    )
+    # Runs are private — show only the ones this member owns / shared with them.
+    if not _is_drafts:
+        _files = [f for f in _files if _run_visible_to(_parse_frontmatter(f), CURRENT_MEMBER)]
+    _files = _files[:50]
     st.markdown(
         f'<div style="padding:1.2rem 0 0.5rem 0">'
         f'<a href="/" target="_self" style="display:inline-block;color:#aeb8cc;font-size:0.85rem;text-decoration:none;'
@@ -4328,6 +4388,21 @@ if _run_q:
                     if ":" in _line:
                         _k, _, _v = _line.partition(":")
                         _fm[_k.strip()] = _v.strip()
+            # Ownership: apply any share toggle, then enforce visibility.
+            _run_owner = (_fm.get("owner") or "").strip()
+            _mine = bool(CURRENT_MEMBER) and _run_owner.lower() == CURRENT_MEMBER.lower()
+            _share_q = st.query_params.get("share")
+            if _mine and _share_q in ("1", "0"):
+                _set_run_shared(_run_path, _share_q == "1")
+                _fm["shared"] = "True" if _share_q == "1" else "False"
+            if not _run_visible_to(_fm, CURRENT_MEMBER):
+                st.markdown(
+                    '<div style="padding:1.4rem 0"><a href="/" target="_self" '
+                    'style="color:#aeb8cc;text-decoration:none">← Back to cockpit</a></div>'
+                    '<div style="color:#d78a8a;font-size:1rem;padding-top:0.5rem">'
+                    'This run is private to another team member.</div>',
+                    unsafe_allow_html=True)
+                st.stop()
             _body = re.sub(r"^---\n.*?\n---\n*", "", _raw, flags=re.DOTALL).strip()
             _skill_label = _fm.get("skill", _run_path.stem.split("-", 2)[-1].replace("-", " ")).upper()
             _run_time = _fm.get("time", "")
@@ -4349,8 +4424,18 @@ if _run_q:
                 unsafe_allow_html=True,
             )
             st.markdown(_body)
+            if _mine:
+                _shared_now = str(_fm.get("shared", "")).strip().lower() == "true"
+                if _shared_now:
+                    _tog = (f'<a href="?run={quote(_rel)}&share=0" target="_self" '
+                            f'style="color:#86c290;text-decoration:none">● Shared with team — click to make private</a>')
+                else:
+                    _tog = (f'<a href="?run={quote(_rel)}&share=1" target="_self" '
+                            f'style="color:#f2b544;text-decoration:none">↗ Share this run with the team</a>')
+                st.markdown(f'<div style="margin-top:1.3rem;font-size:0.85rem">{_tog}</div>',
+                            unsafe_allow_html=True)
             st.markdown(
-                '<div style="margin-top:2rem">'
+                '<div style="margin-top:1.5rem">'
                 '<a href="/" target="_self" style="color:#888;font-size:0.8rem;text-decoration:none">'
                 '← back to dashboard</a></div>',
                 unsafe_allow_html=True,
@@ -5887,9 +5972,19 @@ _enabled_cards = getattr(_cfg, "ENABLED_CARDS", {}) or {}
 
 # Tabs are created up front so every section below lands inside its tab —
 # layout mirrors the original Obsidian cockpit (overview…admin, skills).
-overview_tab, ghl_tab, jobber_tab, social_tab, qbo_tab, skills_tab = st.tabs([
-    "overview", "ghl", "jobber", "social", "quickbooks", "skills",
-])
+import contextlib
+# QuickBooks tab appears only for Owners; Staff never see it.
+_tab_names = ["overview", "ghl", "jobber", "social"]
+if CAN_SEE_MONEY:
+    _tab_names.append("quickbooks")
+_tab_names.append("skills")
+_TABS = dict(zip(_tab_names, st.tabs(_tab_names)))
+overview_tab = _TABS["overview"]
+ghl_tab = _TABS["ghl"]
+jobber_tab = _TABS["jobber"]
+social_tab = _TABS["social"]
+skills_tab = _TABS["skills"]
+qbo_tab = _TABS.get("quickbooks")   # None for Staff
 
 from overview_widgets import (
     OVERVIEW_CARDS, compute_overview, render_metric_cards,
@@ -5913,8 +6008,9 @@ with overview_tab:
         f'· {_range_label}</span></div>',
         unsafe_allow_html=True,
     )
+    _cards = [c for c in OVERVIEW_CARDS if CAN_SEE_MONEY or not c.get("money")]
     render_metric_cards(
-        compute_overview(VAULT_PATH, OVERVIEW_CARDS, _range_start, _range_end),
+        compute_overview(VAULT_PATH, _cards, _range_start, _range_end),
         range_label=_range_label,
     )
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
@@ -6036,9 +6132,10 @@ def _build_activity_svg(df: pd.DataFrame) -> str:
 st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
 
 # ── BTL Quick Action Row ───────────────────────────────────────────────────────
-_BTL_QUICK = ["Daily Briefing", "Inbox Digest", "Crew Brief", "KPI Digest",
-              "Billing Digest", "Pipeline Review"]
-_BTL_SKILL_MAP = {s["label"]: s for s in SKILLS}
+_BTL_QUICK = [q for q in ["Daily Briefing", "Inbox Digest", "Crew Brief", "KPI Digest",
+                          "Billing Digest", "Pipeline Review"]
+              if CAN_SEE_MONEY or q not in MONEY_SKILLS]
+_BTL_SKILL_MAP = {s["label"]: s for s in VISIBLE_SKILLS}
 
 
 def _briefing_money_block() -> str:
@@ -6182,7 +6279,7 @@ def _skill_button_grid(items: list[dict], key_prefix: str) -> None:
                     st.rerun()
 
 _sk_by_cat: dict[str, list[dict]] = {}
-for _s in SKILLS:
+for _s in VISIBLE_SKILLS:
     _sk_by_cat.setdefault(_s.get("category", "other"), []).append(_s)
 
 with skills_tab:
@@ -6219,8 +6316,8 @@ with overview_tab:
             if _show_drv:
                 render_daily_drivers_widget(_daily["drivers"], _today_iso)
             else:
-                # Daily tasks — one checklist section per team member
-                render_tasks_card(VAULT_PATH, TEAM_MEMBERS)
+                # Daily tasks — PRIVATE: each person sees only their own list
+                render_tasks_card(VAULT_PATH, MY_NAME, TEAM_MEMBERS)
         st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
         # Business Health — monthly earnings / spending / leads / jobs.
         # Replaces the old agent-runs chart (redundant with the runs card
@@ -6233,10 +6330,16 @@ with overview_tab:
         except (OSError, json.JSONDecodeError):
             pass
         _bh_series = (_bh or {}).get("series", {})
+        # Staff don't see the money lines (earnings / spending).
+        if not CAN_SEE_MONEY:
+            _bh_series = {k: v for k, v in _bh_series.items()
+                          if k not in ("earnings", "spending")}
+        _bh_meta = ("leads · jobs" if not CAN_SEE_MONEY
+                    else "earnings · spending · leads · jobs")
         st.markdown(
             '<div class="v2-panel-head" style="margin-bottom:0.2rem">'
             '<span>§ BUSINESS HEALTH · 12 MONTHS</span>'
-            f'<span class="v2-thru-meta">earnings · spending · leads · jobs</span>'
+            f'<span class="v2-thru-meta">{_bh_meta}</span>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -6357,7 +6460,7 @@ with overview_tab:
 
         queue_card_fragment()
 
-        runs = list_recent_runs(8)
+        runs = list_recent_runs(8, member=CURRENT_MEMBER)
         card_html = '<div class="runs-card"><div class="cat-label">recent runs</div>'
         if not runs:
             card_html += '<div style="color: var(--text-mute); font-size: 0.8rem; padding: 0.4rem 0 0.5rem 0;">no runs yet</div>'
@@ -7436,8 +7539,8 @@ with jobber_tab:
                 st.markdown("---")
                 st.caption("No Jobber data yet — click ↻ Pull to load live data")
 
-with qbo_tab:
-    if _layout_v == "v2":
+with (qbo_tab if qbo_tab is not None else contextlib.nullcontext()):
+    if qbo_tab is not None and _layout_v == "v2":
         st.markdown('<hr class="chapter" />', unsafe_allow_html=True)
         st.markdown("#### QuickBooks Overview", unsafe_allow_html=False)
 

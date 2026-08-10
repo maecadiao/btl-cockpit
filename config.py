@@ -108,8 +108,24 @@ DEMO_LATEST_VIDEO = {
 
 SKILL_CATEGORY_ORDER = ["marketing", "sales", "admin", "production", "executive"]
 
-# Team roster — drives the per-member Daily Tasks card on the overview.
-TEAM_MEMBERS = ["Mae", "Hunter", "Shella", "Josh", "Maddi"]
+# ── Access roles & team roster ────────────────────────────────────────────────
+# Owners (admins) see everything, including financials. Everyone else is Staff:
+# no QuickBooks tab, no money cards, no $ chart lines, no money skills.
+OWNERS = ["admin@bethelightdecor.com", "info@bethelightdecor.com"]  # Mae, Hunter
+
+# Each person's sign-in email — powers per-person (private) Daily Tasks and maps a
+# login to its owner. Fill in the remaining emails as the team signs in.
+TEAM = [
+    {"name": "Mae",    "email": "admin@bethelightdecor.com"},
+    {"name": "Hunter", "email": "info@bethelightdecor.com"},
+    {"name": "Shella", "email": ""},
+    {"name": "Josh",   "email": ""},
+    {"name": "Maddi",  "email": ""},
+]
+TEAM_MEMBERS = [m["name"] for m in TEAM]
+
+# Skills that reveal money — hidden from Staff logins.
+MONEY_SKILLS = {"P&L Narrative", "Billing Digest", "Revenue Growth"}
 
 _AUTO = (
     "Act autonomously. Do not ask for confirmation. "
